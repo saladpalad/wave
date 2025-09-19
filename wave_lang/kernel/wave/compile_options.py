@@ -41,8 +41,8 @@ class WaveCompileOptions:
     kernel_usages: tuple[KernelBufferUsage] = None
 
     # === Backend options ===
-    device: str = "hip"
-    target: str = "gfx942"
+    device: str = None  # "cuda" or "hip"
+    target: str = None  # "sm_100" or "gfx942"
     iree_preprocessing_pass_pipeline: str = None
     num_devices: int = 1
 
