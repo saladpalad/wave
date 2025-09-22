@@ -108,15 +108,17 @@ def get_default_arch() -> str:
         return "cpu"
 
     device = torch.device("cuda")
-    gcnArch = torch.cuda.get_device_properties(device).gcnArchName
-    if "gfx" not in gcnArch:
-        return "cpu"
+    props = torch.cuda.get_device_properties(device)
 
-    # The gcnArchName comes back like gfx90a:sramecc+:xnack.
-    colon_pos = gcnArch.find(":")
-    if colon_pos > 0:
-        return gcnArch[0:colon_pos]
-    return gcnArch
+    if hasattr(props, "gcnArchName"):
+        # The gcnArchName comes back like gfx90a:sramecc+:xnack.
+        colon_pos = props.gcnArchName.find(":")
+        if colon_pos > 0:
+            return props.gcnArchName[0:colon_pos]
+    elif "NVIDIA" in props.name: 
+        return f"sm_{props.major}{props.minor}"
+    else: 
+        return "cpu"
 
 
 def get_arch_family() -> str:
@@ -154,6 +156,12 @@ def set_default_run_config(options: WaveCompileOptions) -> WaveCompileOptions:
     if enable_scheduling_barriers is not None:
         options.use_scheduling_barriers = bool(int(enable_scheduling_barriers))
 
-    options.device = "hip"
+    props = torch.cuda.get_device_properties(torch.device)
+
+    if hasattr(props, "gcnArchName"):
+        options.device = "hip"
+    else:
+        options.device = "cuda"
+
     options.target = get_default_arch()
     return options
