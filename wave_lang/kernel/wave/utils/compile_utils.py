@@ -156,12 +156,12 @@ def canonicalize_module(module: Operation):
 def set_default_compile_config(options: WaveCompileOptions) -> WaveCompileOptions:
     """Return default config for compilation."""
     props = torch.cuda.get_device_properties(torch.device)
-    #if not hasattr(props, "gcnArchName"):
-        #options.device = "cuda"
-        #options.target = "sm_100"
-    #else: 
-    options.device = "hip"
-    options.target = "gfx942"
+    if hasattr(props, "gcnArchName") and 'NVIDIA' not in props.name:
+        options.device = "hip"
+        options.target = "gfx942"
+    else: 
+        options.device = "cuda"
+        options.target = "sm_100"
     return options
 
 
