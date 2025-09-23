@@ -158,6 +158,7 @@ def set_default_run_config(options: WaveCompileOptions) -> WaveCompileOptions:
     if not torch.cuda.is_available():
         options.device = "hip"
         options.target = get_default_arch()
+        return options
     else:
         props = torch.cuda.get_device_properties(torch.device)
 
