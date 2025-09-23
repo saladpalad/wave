@@ -161,7 +161,7 @@ def set_default_compile_config(options: WaveCompileOptions) -> WaveCompileOption
         options.target = "gfx942"
     else:
         options.device = "cuda"
-        options.target = "sm_100"
+        options.target = "sm_86"
     return options
 
 
