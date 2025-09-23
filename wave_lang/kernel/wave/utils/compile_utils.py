@@ -158,6 +158,7 @@ def set_default_compile_config(options: WaveCompileOptions) -> WaveCompileOption
     if not torch.cuda.is_available():
         options.device = "hip"
         options.target = "gfx942"
+        return options
     else:
         props = torch.cuda.get_device_properties(torch.device)
         if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
