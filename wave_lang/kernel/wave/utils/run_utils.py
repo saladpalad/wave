@@ -107,7 +107,7 @@ def get_default_arch() -> str:
     if not torch.cuda.is_available():
         return "cpu"
     else:
-        device = torch.device('cuda')
+        device = torch.device("cuda")
         props = torch.cuda.get_device_properties(device)
 
         if "gfx" not in props.gcnArchName:
