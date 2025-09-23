@@ -106,17 +106,17 @@ def get_default_arch() -> str:
 
     if not torch.cuda.is_available():
         return "cpu"
-
-    device = torch.device("cuda")
-    props = torch.cuda.get_device_properties(device)
-
-    if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
-        # The gcnArchName comes back like gfx90a:sramecc+:xnack.
-        colon_pos = props.gcnArchName.find(":")
-        if colon_pos > 0:
-            return props.gcnArchName[0:colon_pos]
     else:
-        return f"sm_86"
+        device = torch.device("cuda")
+        props = torch.cuda.get_device_properties(device)
+
+        if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
+            # The gcnArchName comes back like gfx90a:sramecc+:xnack.
+            colon_pos = props.gcnArchName.find(":")
+            if colon_pos > 0:
+                return props.gcnArchName[0:colon_pos]
+        else:
+            return f"sm_86"
 
 
 def get_arch_family() -> str:
