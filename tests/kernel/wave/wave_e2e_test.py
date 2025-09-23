@@ -45,7 +45,7 @@ from .common.utils import (
     require_cdna3,
     require_e2e,
     require_cdna_2_or_3_or_4,
-    require_nvidia
+    require_nvidia,
 )
 from .common.shapes import get_test_shapes as get_common_test_shape
 
@@ -2229,19 +2229,16 @@ def test_elementwise_add(shape):
     constraints = [
         tkw.WorkgroupConstraint(M, BLOCK_M, 0),
         tkw.WaveConstraint(M, BLOCK_M / 2),
-        tkw.HardwareConstraint(
-            threads_per_wave=64,
-            vector_shapes={M: BLOCK_M}
-        )
+        tkw.HardwareConstraint(threads_per_wave=64, vector_shapes={M: BLOCK_M}),
     ]
-        
+
     @tkw.wave(constraints)
     def test(
         a: tkl.Memory[M, ADDRESS_SPACE_A, tkl.f32],
         b: tkl.Memory[M, ADDRESS_SPACE_B, tkl.f32],
         c: tkl.Memory[M, ADDRESS_SPACE_C, tkl.f32],
     ):
-        c_reg = tkl.Register[M,tkl.f32](0.0)
+        c_reg = tkl.Register[M, tkl.f32](0.0)
         a_reg = tkw.read(a)
         b_reg = tkw.read(b)
         c_reg = a_reg + b_reg
