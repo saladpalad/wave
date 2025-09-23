@@ -42,6 +42,13 @@ require_cdna_2_or_3_or_4 = pytest.mark.skipif(
         get_default_arch()
     ),
 )
+require_nvidia = pytest.mark.skipif(
+    print(get_default_arch()),
+    "sm_86" not in get_default_arch(),
+    reason="Default architecture is not NVIDIA, default architecture is '{}'".format(
+        get_default_arch()
+    ),
+)
 
 # Add test shapes for validation and performance testing.
 perf_test = lambda *a: pytest.param(*a, marks=pytest.mark.perf_only)

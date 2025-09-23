@@ -49,7 +49,7 @@ def compile_to_vmfb(
     # TODO: More targets/backends support.
     if options.device == "hip":
         flags.append(f"--iree-hip-target={options.target}")
-    
+
     if options.device == "cuda":
         flags.append(f"--iree-cuda-target={options.target}")
 
@@ -156,10 +156,10 @@ def canonicalize_module(module: Operation):
 def set_default_compile_config(options: WaveCompileOptions) -> WaveCompileOptions:
     """Return default config for compilation."""
     props = torch.cuda.get_device_properties(torch.device)
-    if hasattr(props, "gcnArchName") and 'NVIDIA' not in props.name:
+    if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
         options.device = "hip"
         options.target = "gfx942"
-    else: 
+    else:
         options.device = "cuda"
         options.target = "sm_100"
     return options
