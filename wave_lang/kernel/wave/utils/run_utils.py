@@ -107,10 +107,10 @@ def get_default_arch() -> str:
     if not torch.cuda.is_available():
         return "cpu"
 
-    device = torch.device('cuda')
+    device = torch.device("cuda")
     props = torch.cuda.get_device_properties(device)
 
-    if hasattr(props, "gcnArchName") and 'NVIDIA' not in props.name:
+    if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
         # The gcnArchName comes back like gfx90a:sramecc+:xnack.
         colon_pos = props.gcnArchName.find(":")
         if colon_pos > 0:
@@ -156,13 +156,13 @@ def set_default_run_config(options: WaveCompileOptions) -> WaveCompileOptions:
 
     props = torch.cuda.get_device_properties(torch.device)
 
-    if hasattr(props, "gcnArchName") and 'NVIDIA' not in props.name:
+    if hasattr(props, "gcnArchName") and "NVIDIA" not in props.name:
         options.device = "hip"
     else:
         options.device = "cuda"
 
     options.target = get_default_arch()
-    print('hello')
+    print("hello")
     print("default arch: ", get_default_arch())
     print("options.target: ", options.target)
     print("options.device: ", options.device)

@@ -1,4 +1,4 @@
-# Copyright 2024 Nod Labs, Inc
+# Copyright 2023 Nod Labs, Inc
 #
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -683,7 +683,7 @@ def _create_device_from_torch(torch_device: torch.device) -> Optional[Device]:
     elif torch_type == "cuda":
         # Fork based on HIP or real CUDA.
         props = torch.cuda.get_device_properties(torch_device)
-        if 'NVIDIA' in props.gcnArchName:
+        if "NVIDIA" in props.gcnArchName:
             # Real CUDA.
             return _create_cuda_device(torch_device, props)
         else:
