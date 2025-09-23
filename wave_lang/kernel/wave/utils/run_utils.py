@@ -116,7 +116,7 @@ def get_default_arch() -> str:
         if colon_pos > 0:
             return props.gcnArchName[0:colon_pos]
     else:
-        return f"sm_{props.major}{props.minor}"
+        return f"sm_86"
 
 
 def get_arch_family() -> str:
