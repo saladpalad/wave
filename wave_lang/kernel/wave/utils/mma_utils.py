@@ -159,7 +159,7 @@ def get_mma_dimensional_mapping(
             arg = get_custom(arg)
             if is_reshape_needed(arg, mma.vector_shapes, prev_mma.vector_shapes):
                 reshape = Reshape(arg.fx_node, prev_mma.vector_shapes).add_to_graph(
-                    mma.graph
+                    mma.graph, loc=mma.location
                 )
                 custom_reshape = get_custom(reshape)
                 custom_reshape.vector_shapes = mma.vector_shapes

@@ -95,9 +95,14 @@ def materialize_shape(
                 subs_idxc(dim_expr.subs(dim, constraint_tile_size[dim]))
             )
         else:
-            materialized_shape.append(
-                subs_idxc(sympy.ceiling(dim / vector_shapes[dim]) * vector_shapes[dim])
-            )
+            if vector_shapes is None:
+                materialized_shape.append(subs_idxc(dim))
+            else:
+                materialized_shape.append(
+                    subs_idxc(
+                        sympy.ceiling(dim / vector_shapes[dim]) * vector_shapes[dim]
+                    )
+                )
 
     return materialized_shape
 
@@ -234,7 +239,7 @@ def add_optimized_nodes(
         for i in range(expected_number_of_loads):
             with custom.graph.inserting_before(custom.fx_node):
                 read = Read(memory, load_elems_per_thread, custom.mapping).add_to_graph(
-                    custom.graph
+                    custom.graph, loc=custom.location
                 )
                 global_offset = (
                     hardware_constraint.linearized_thread_id * load_elems_per_thread
@@ -265,7 +270,7 @@ def add_optimized_nodes(
                     ):
                         write = Write(
                             read, custom_user.memory, load_elems_per_thread
-                        ).add_to_graph(custom.graph)
+                        ).add_to_graph(custom.graph, loc=custom.location)
                         write.index = read.index
                         optimized_writes[custom_user.memory].append(write)
                         write.vector_shapes = custom.vector_shapes
