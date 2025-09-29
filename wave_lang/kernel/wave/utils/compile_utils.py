@@ -6,8 +6,6 @@
 from typing import Dict, List, Optional, Any
 import re
 
-import torch
-
 from iree.compiler import compile_str
 from iree.compiler.dialects import (
     _structured_transform_ops_gen as structured_transform_ops,
