@@ -111,7 +111,7 @@ def get_default_arch() -> str:
         props = torch.cuda.get_device_properties(device)
 
         if "gfx" not in props.gcnArchName:
-            return "sm_86"
+            return "sm_100"
         else:
             # The gcnArchName comes back like gfx90a:sramecc+:xnack.
             colon_pos = props.gcnArchName.find(":")
