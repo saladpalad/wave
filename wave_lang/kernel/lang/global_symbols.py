@@ -7,6 +7,7 @@ from .._support.indexing import index_symbol
 # Address spaces.
 GLOBAL_ADDRESS_SPACE = index_symbol("$GLOBAL_ADDRESS_SPACE")
 SHARED_ADDRESS_SPACE = index_symbol("$SHARED_ADDRESS_SPACE")
+TENSOR_ADDRESS_SPACE = index_symbol("$TENSOR_ADDRESS_SPACE")
 
 # Device Distribution symbols.
 # TODO: Can only do three dimensions for now.

@@ -23,7 +23,7 @@ import torch.fx as fx
 from typing_extensions import Self
 from itertools import combinations
 
-from .._support.dtype import DataType, i1
+from .._support.dtype import DataType, i1, i32, i64
 from .._support.indexing import IndexExpr, IndexSequence, IndexSymbol
 from .._support.location import capture_location, CapturedLocation
 from .._support.regions import RegionGraph
@@ -94,6 +94,9 @@ def allocate(
     dtype: DataType,
     address_space: IndexSymbol,
 ) -> "Memory": ...
+
+
+def allocate_tmem(shared_mem_ptr: "Memory", nCols: int) -> None: ...
 
 
 def self_index(
@@ -1335,7 +1338,7 @@ class Allocate(CustomOp):
     distributed_shape: tuple[IndexExpr]
     dtype: DataType
     address_space: AddressSpace = SHARED_ADDRESS_SPACE
-    padding: int = 0
+    padding: int = 1
     parent: Optional[fx.Node] = None
     offset: Optional[IndexExpr] = None
     tail_padding: int = 0  # Padding after the array end
@@ -1374,6 +1377,139 @@ class Allocate(CustomOp):
             sym_type = infer_dim(sym_type) if is_scaled_dim(sym_type) else sym_type
             unpadded_dim[sym_type] = self.distributed_shape[idx]
         return unpadded_dim
+
+
+@define_op("allocate_tmem")
+@dataclass
+class AllocateTMEM(CustomOp):
+    """
+    Represents an allocation in tensor memory for Nvidia Blackwell Architecture
+
+    shared_mem_ptr: pointer to the shared memory buffer holding the TMEM address
+    nCols: Number of columns to allocate
+    two_cta: Represents what cta group (1 or 2) the allocation belongs to
+    """
+
+    shared_mem_ptr: fx.Node
+    num_cols: int
+    two_cta_group: bool = None
+
+
+@define_op("get_tmem_ptr")
+@dataclass
+class GetTMEMPtr(CustomOp):
+    """
+    Returns a pointer to tensor memory given the element type and alignment
+
+    shared_mem_ptr: pointer to the shared memory buffer holding the TMEM address
+    alignment: alignment of the pointer
+    element_type: pointee type of the pointer
+    """
+
+    shared_mem_ptr: fx.Node
+    alignment: int
+    dtype: DataType
+
+
+@define_op("deallocate_tmem")
+@dataclass
+class DeallocateTMEM(CustomOp):
+    """
+    Represents an deallocation in tensor memory for Nvidia Blackwell Architecture
+
+    tmem_ptr: pointer to the destination addr of where the TMEM was allocated
+    nCols: Number of columns to allocate
+    two_cta: Represents what cta group (1 or 2) the allocation belongs to
+    """
+
+    tmem_ptr: fx.Node
+    nCols: int
+    two_cta_group: bool = None
+
+
+@define_op("read_tmem")
+@dataclass
+class ReadTMEM(CustomOp):
+    tmem_ptr: fx.Node
+    M_dim: int
+    N_dim: int
+    dtype: DataType
+    shape: str  # just hardcode the shape :p
+    repeat: str
+    pack: bool
+    offset: Optional[int] = None
+
+    @property
+    def indexing_dims(self) -> list[IndexSymbol]:
+        return []  # indexing is already handled by hardware
+
+    def infer_type(self, *args):
+        self.type = Register[self.M_dim, self.N_dim, self.dtype]
+
+
+@define_op("write_tmem")
+@dataclass
+class WriteTMEM(CustomOp):
+    tmem_ptr: fx.Node
+    val: fx.Node
+    shape: str
+    repeat: str
+    unpack: bool
+    offset: Optional[int] = None
+
+    def infer_type(self, *args):
+        self.type = None
+
+
+@define_op("create_smem_descriptor")
+@dataclass
+class CreateSMEMDescriptor(CustomOp):
+    smem_ptr: fx.Node
+    leading_dim_byte_offset: int
+    stride_dim_byte_offset: int
+    base_offset: int = 0
+    leading_dim_mode: bool = False
+    swizzle_mode: int = 0
+
+    def infer_type(self, *args):
+        self.type = i64
+
+
+@define_op("create_instr_descriptor")
+@dataclass
+class CreateInstrDescriptor(CustomOp):
+    a_type: DataType
+    b_type: DataType
+    d_type: DataType
+    transpose_a: bool
+    transpose_b: bool
+    M_dim: int
+    N_dim: int
+
+    def infer_type(self, *args):
+        self.type = i32
+
+
+@define_op("tcgen05_mma")
+@dataclass
+class Tcgen05MMA(CustomOp):
+    a_descriptor: fx.Node
+    b_descriptor: fx.Node
+    c_tmem_addr: fx.Node
+    instr_desc: fx.Node
+    enable_accum: bool = False
+    scale_d: int = 0
+    cta_group: int = 1
+
+    def infer_type(self, *args):
+        self.type = None
+
+
+# TODO: add stubs for dealloc, getTMEM, ld, st
+# nvvm.tcgen05.dealloc
+# nvvm.tcgen05.ld (load from tMem to register)
+# nvvm.tcgen05.st (store from register to tMem)
+# nvvm.tcgen05.cp
 
 
 @define_op("self_index")

@@ -16,8 +16,10 @@ __all__ = [
     "f8E4M3FNUZ",
     "f8E8M0FNU",
     "f6E2M3FN",
+    "f6E3M2FN",
     "f4E2M1FN",
     "index",
+    "tf32",
 ]
 
 _INT_TYPES = ["i1", "i4", "i8", "i16", "i32", "i64"]
@@ -32,6 +34,7 @@ _FLOAT_TYPES = [
     "f8E4M3FNUZ",
     "f8E8M0FNU",
     "f6E2M3FN",
+    "f6E3M2FN",
     "f4E2M1FN",
 ]
 _INDEX_TYPES = ["index"]
@@ -116,5 +119,6 @@ f8e4m3fn = DataType("f8E4M3FN")
 f8e4m3fnuz = DataType("f8E4M3FNUZ")
 f8e8m0fnu = DataType("f8E8M0FNU")
 f6e2m3fn = DataType("f6E2M3FN")
+f6e3m2fn = DataType("f6E3M2FN")
 f4e2m1fn = DataType("f4E2M1FN")
 index = DataType("index")

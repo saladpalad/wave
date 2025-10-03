@@ -20,11 +20,16 @@ from ..._support.tracing import CapturedTrace
 from ...lang.global_symbols import *
 from ...ops.wave_ops import (
     Allocate,
+    AllocateTMEM,
     AtomicOp,
     BinaryPyOp,
     Broadcast,
     CustomOp,
+    CreateInstrDescriptor,
+    CreateSMEMDescriptor,
+    DeallocateTMEM,
     GetResult,
+    GetTMEMPtr,
     IterArg,
     Iterate,
     MMA,
@@ -33,13 +38,16 @@ from ...ops.wave_ops import (
     Output,
     Placeholder,
     Read,
+    ReadTMEM,
     ReduceOp,
     ScaledMMA,
     SelectOp,
     SetWavePrio,
     SharedMemoryBarrier,
+    Tcgen05MMA,
     WorkgroupBarrier,
     Write,
+    WriteTMEM,
     get_custom,
 )
 from ..constraints import (
@@ -208,9 +216,21 @@ def verify_nodes(trace: CapturedTrace, constraints: list[Constraint]):
     nodes = trace.walk(lambda x: x)
     for node in nodes:
         custom = get_custom(node)
-        if isinstance(custom, (Placeholder, Allocate)) and not isinstance(
-            custom, IterArg
-        ):
+        if isinstance(
+            custom,
+            (
+                Placeholder,
+                Allocate,
+                AllocateTMEM,
+                DeallocateTMEM,
+                GetTMEMPtr,
+                ReadTMEM,
+                WriteTMEM,
+                CreateInstrDescriptor,
+                CreateSMEMDescriptor,
+                Tcgen05MMA,
+            ),
+        ) and not isinstance(custom, IterArg):
             continue
         if isinstance(custom, (Output, NestedRegionOp)):
             continue
@@ -341,7 +361,65 @@ def set_thread_independent_index(
     Set the index of the node based on all constraints except the hardware constraint.
     """
     custom = get_custom(node)
-    if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
+    # if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
+    # return
+    # I wonder if I need to do this, because originally it was Iterate, Placeholder and no Allocate, so I'm assuming AllocateTMEM, and others might not want to skip this?
+    """
+        (env) gcastro@smci350-zts-gtu-c6-25:~/wave_kernels$ python3 blackwell_gemm.py
+    Traceback (most recent call last):
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/emitter.py", line 160, in _emit_function_call_node
+        handler(self, node)
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/read_write.py", line 843, in handle_write
+        insert_vector = cast_vector(emitter, register, element_type=kb_ir_type.element_type)
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/emitter.py", line 803, in cast_vector
+        value = ScalarBuilder.to_dtype(proxy_value, element_type).ir_value
+    File "/home/gcastro/wave/wave_lang/kernel/compiler/builder.py", line 129, in to_dtype
+        return IRProxyValue(handler(value.ir_value, to_type))
+    File "/home/gcastro/wave/wave_lang/kernel/compiler/builder.py", line 251, in to_dtype_integer_to_float
+        return self.to_dtype(IRProxyValue(casted_to_float), to_type).ir_value
+    File "/home/gcastro/wave/wave_lang/kernel/compiler/builder.py", line 114, in to_dtype
+        to_type = VectorType.get(value_type.shape, dtype)
+    iree.compiler._mlir_libs._site_initialize.<locals>.MLIRError: Invalid type:
+    error: unknown: failed to verify 'elementType': VectorElementTypeInterface instance
+
+    During handling of the above exception, another exception occurred:
+
+    Traceback (most recent call last):
+    File "/home/gcastro/wave_kernels/blackwell_gemm.py", line 146, in <module>
+        test_gemm()
+    File "/home/gcastro/wave_kernels/blackwell_gemm.py", line 131, in test_gemm
+        compiled_gemm = wave_compile(options, gemm)
+    File "/home/gcastro/wave/wave_lang/kernel/wave/compile.py", line 325, in wave_compile
+        ) = kernel._trace_and_get_kernel_signature(options)
+    File "/home/gcastro/wave/wave_lang/kernel/wave/wave.py", line 884, in _trace_and_get_kernel_signature
+        *self.compile_to_mlir(trace, context, module_op, options=options),
+    File "/home/gcastro/wave/wave_lang/kernel/wave/wave.py", line 623, in compile_to_mlir
+        emitter.emit(trace.get_root_graph())
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/emitter.py", line 130, in emit
+        self._emit_graph(
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/emitter.py", line 142, in _emit_graph
+        self._emit_function_call_node(node)
+    File "/home/gcastro/wave/wave_lang/kernel/wave/codegen/emitter.py", line 165, in _emit_function_call_node
+        except e:
+    NameError: name 'e' is not defined
+    But I get this error if I don't skip the allocate and extra tcgen05 stuff
+    """
+    if isinstance(
+        custom,
+        (
+            Iterate,
+            Placeholder,
+            Allocate,
+            AllocateTMEM,
+            DeallocateTMEM,
+            GetTMEMPtr,
+            # ReadTMEM,
+            WriteTMEM,
+            CreateInstrDescriptor,
+            CreateSMEMDescriptor,
+            Tcgen05MMA,
+        ),
+    ) and not isinstance(custom, IterArg):
         return
 
     constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
@@ -627,9 +705,20 @@ def add_nodes_to_sources(
             break
         for arg in args:
             custom = get_custom(arg)
-            if isinstance(custom, (Allocate, Placeholder)) and not isinstance(
-                custom, IterArg
-            ):
+            if isinstance(
+                custom,
+                (
+                    Allocate,
+                    Placeholder,
+                    AllocateTMEM,
+                    DeallocateTMEM,
+                    GetTMEMPtr,
+                    WriteTMEM,
+                    CreateInstrDescriptor,
+                    CreateSMEMDescriptor,
+                    Tcgen05MMA,
+                ),
+            ) and not isinstance(custom, IterArg):
                 continue
             vector_shapes = (
                 custom.vector_shapes if custom.vector_shapes else source_vector_shapes
@@ -776,7 +865,7 @@ def set_thread_dependent_index_from_read_write(
     hardware_constraint = get_hardware_constraint(constraints)
     sources = trace.walk(lambda node: isinstance(get_custom(node), (Read, Write)))
     sources = [get_custom(x) for x in sources]
-    assert sources, "No read nodes found in the graph."
+    assert sources, "No read and write nodes found in the graph."
 
     visited = set()
     workgroup_constraints = get_workgroup_constraints(constraints)
@@ -933,7 +1022,7 @@ def set_post_expansion_indices(trace: CapturedTrace, constraints: list[Constrain
 
     def apply_offset(node: fx.Node):
         custom = get_custom(node)
-        if custom.expanded_dims is None:
+        if custom.expanded_dims is None or custom.index is None:
             return False
         for dim, scale in custom.expanded_dims.items():
             if dim in custom.index:

@@ -26,6 +26,7 @@ class AddressSpace(Enum):
     REGISTER = 0
     SHARED_MEMORY = 1
     GLOBAL_MEMORY = 2
+    TENSOR_MEMORY = 3
 
 
 class KernelBufferUsage(Enum):

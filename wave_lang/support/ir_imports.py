@@ -43,6 +43,9 @@ from iree.compiler.dialects import (
     memref as memref_d,
 )
 from iree.compiler.dialects import (
+    nvvm as nvvm_d,
+)
+from iree.compiler.dialects import (
     rocdl as rocdl_d,
 )
 from iree.compiler.dialects import (

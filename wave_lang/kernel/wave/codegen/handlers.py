@@ -8,10 +8,14 @@ import copy
 import math
 import operator
 from typing import Any, Callable, Sequence
+from wave_lang.kernel.lang.descriptor import InstructionDescriptor
 
 import sympy
 import torch.fx as fx
 import torch.utils._pytree as pytree
+
+# this line is broken
+# from mlir.dialects import nvvm as nvvm_d
 
 from wave_lang.aot.support.ir_utils import (
     _is_float_type,
@@ -41,6 +45,7 @@ from wave_lang.support.ir_imports import (
     llvm_d,
     math_d,
     memref_d,
+    nvvm_d,
     rocdl_d,
     scf_d,
     vector_d,
@@ -54,6 +59,7 @@ from ...ops.wave_ops import (
     MMABase,
     abs,
     allocate,
+    allocate_tmem,
     apply_expr,
     atan2,
     atomic_min,
@@ -63,6 +69,9 @@ from ...ops.wave_ops import (
     cast,
     cbrt,
     conditional,
+    create_instr_descriptor,
+    create_smem_descriptor,
+    deallocate_tmem,
     cos,
     eq,
     exp,
@@ -72,6 +81,7 @@ from ...ops.wave_ops import (
     ge,
     get_custom,
     get_result,
+    get_tmem_ptr,
     gt,
     iterate,
     le,
@@ -106,6 +116,7 @@ from ...ops.wave_ops import (
     sqrt,
     tanh,
     tanh_approx,
+    tcgen05_mma,
     workgroup_barrier,
 )
 from ..compile_options import WaveCompileOptions
@@ -228,6 +239,153 @@ def handle_allocate(emitter: WaveEmitter, node: fx.Node):
 
     alloc = memref_d.alloc(memref_type, [], [])
     emitter.bind_node_proxy(node, IRProxyValue(alloc))
+
+
+@handle_op(allocate_tmem)
+def handle_allocate_tmem(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (shared_mem_ptr, nCols, two_cta_group) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    shared_mem_ptr = cast_py_value(emitter, shared_mem_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr_int = arith_d.index_cast(i32_type, memref_idx)
+    # assign llvm pointer to address space 3 (address_space=3 corresponds to shared memory)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr_int)
+    emit_tcgen05_alloc(shared_mem_llvm_ptr, nCols, two_cta_group)
+
+
+#  emitter.bind_node_proxy(node, IRProxyValue(shared_mem_llvm_ptr))
+
+
+def emit_tcgen05_alloc(shared_mem_ptr: Value, nCols: int, two_cta_group: bool) -> Value:
+    if two_cta_group:
+        group = Attribute.parse("#nvvm.cta_group<cta_2>")
+    else:
+        group = Attribute.parse("#nvvm.cta_group<cta_1>")
+    nCols = arith_d.constant(IntegerType.get_signless(32), nCols)
+    nvvm_d.tcgen05_alloc(addr=shared_mem_ptr, n_cols=nCols, group=group)
+
+
+@handle_op(get_tmem_ptr)
+def handle_get_tmem_ptr(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (shared_mem_ptr, alignment, dtype) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    shared_mem_ptr = cast_py_value(emitter, shared_mem_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    # assign llvm pointer to address space 3 (address_space=3 corresponds to shared memory)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    # not sure what to do w/ alignment and dtype? (maybe its not needed, idk what cutedsl uses it for)
+    # look at todo 9-24.txt
+    # get the tmem_addr from the shared buffer
+    tmem_addr_int = llvm_d.load(i32_type, shared_mem_llvm_ptr)
+    tmem_address_space = llvm_d.PointerType.get(address_space=6)
+    tmem_llvm_ptr = llvm_d.inttoptr(tmem_address_space, tmem_addr_int)
+    emitter.bind_node_proxy(node, IRProxyValue(tmem_llvm_ptr))
+
+
+@handle_op(deallocate_tmem)
+def handle_deallocate_tmem(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (tmem_ptr, nCols, two_cta_group) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    tmem_ptr = cast_py_value(emitter, tmem_ptr).ir_value
+    emit_tcgen05_dealloc(tmem_ptr, nCols, two_cta_group)
+
+
+#  emitter.bind_node_proxy(node, IRProxyValue(tmem_ptr))
+
+
+def emit_tcgen05_dealloc(tmem_ptr: Value, nCols: int, two_cta_group: bool) -> Value:
+    if two_cta_group:
+        group = Attribute.parse("#nvvm.cta_group<cta_2>")
+    else:
+        group = Attribute.parse("#nvvm.cta_group<cta_1>")
+    nCols = arith_d.constant(IntegerType.get_signless(32), nCols)
+    nvvm_d.tcgen05_dealloc(
+        taddr=tmem_ptr,
+        n_cols=nCols,
+        group=group,
+    )
+
+
+@handle_op(create_smem_descriptor)
+def handle_create_smem_descriptor(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (
+            smem_ptr,
+            leading_dim_byte_offset,
+            stride_dim_byte_offset,
+            base_offset,
+            leading_dim_mode,
+            swizzle_mode,
+        ) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+
+    smem_ptr = cast_py_value(emitter, smem_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(smem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    start_addr = arith_d.index_cast(i32_type, memref_idx)
+
+    leading_dim_byte_offset = int(subs_idxc(leading_dim_byte_offset))
+    stride_dim_byte_offset = int(subs_idxc(stride_dim_byte_offset))
+    base_offset = int(subs_idxc(base_offset))
+
+    leading_dim_byte_offset = arith_d.constant(
+        IntegerType.get_signless(32), leading_dim_byte_offset
+    )
+    stride_dim_byte_offset = arith_d.constant(
+        IntegerType.get_signless(32), stride_dim_byte_offset
+    )
+    base_offset = arith_d.constant(IntegerType.get_signless(8), base_offset)
+    leading_dim_mode = arith_d.constant(IntegerType.get_signless(1), leading_dim_mode)
+    swizzle_mode = arith_d.constant(IntegerType.get_signless(8), swizzle_mode)
+
+    result = nvvm_d.tcgen05_mma_smem_desc(
+        res=IntegerType.get_signless(64),
+        start_addr=start_addr,
+        leading_dim_offset=leading_dim_byte_offset,
+        stride_dim_offset=stride_dim_byte_offset,
+        base_offset=base_offset,
+        leading_dim_mode=leading_dim_mode,
+        swizzle_mode=swizzle_mode,
+    )
+
+    emitter.bind_node_proxy(node, IRProxyValue(result))
+
+
+@handle_op(create_instr_descriptor)
+def handle_create_instr_descriptor(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (a_type, b_type, d_type, transpose_a, transpose_b, M_dim, N_dim) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+
+    # hardcode the kind value for now... but need to figure out a way what ::kind we are doing
+    # w/o the user inputting it? Maybe just a bunch of if statements for a_type,b_type,d_type?
+    # hardcode f16_desc for now
+    desc_value = InstructionDescriptor.create_f16_desc(
+        a_type, b_type, d_type, transpose_a, transpose_b, N_dim, M_dim
+    )
+
+    i32_type = IntegerType.get_signless(32)
+    result = arith_d.constant(i32_type, desc_value)
+
+    emitter.bind_node_proxy(node, IRProxyValue(result))
+
+    # kind = "f16"
+    # if kind == "f16":
+    # desc = InstructionDescriptor.create_f16_desc(a_type, b_type, d_type, transpose_a, transpose_b, N_dim, M_dim)
 
 
 def _get_start_index(i: IndexSequence | IndexExpr) -> IndexExpr:
@@ -400,6 +558,55 @@ def handle_mma(emitter: WaveEmitter, node: fx.Node):
         else emit_mfma(m, n, k, acc, values)
     )
     emitter.bind_node_proxy(node, IRProxyValue(result))
+
+
+@handle_op(tcgen05_mma)
+def handle_tcgen05_mma(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (
+            a_descriptor,
+            b_descriptor,
+            c_tmem_addr,
+            instr_desc,
+            enable_accum,
+            scale_d,
+            cta_group,
+        ) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+
+    # Convert all arguments to MLIR Values
+    a_desc = cast_py_value(emitter, a_descriptor).ir_value  # i64
+    b_desc = cast_py_value(emitter, b_descriptor).ir_value  # i64
+    c_tmem = cast_py_value(emitter, c_tmem_addr).ir_value  # ptr addrspace(6)
+    i_desc = cast_py_value(emitter, instr_desc).ir_value  # i32
+
+    # Create constant flags
+    i32_type = IntegerType.get_signless(32)
+    i1_type = IntegerType.get_signless(1)
+
+    kind_flag = arith_d.constant(i32_type, 0)  # 0 = F16
+    cta_group_flag = arith_d.constant(i32_type, cta_group)
+    collector_flag = arith_d.constant(i32_type, 0)  # 0 = DISCARD
+    enable_inp = arith_d.constant(i1_type, 1 if enable_accum else 0)
+
+    # Call the intrinsic
+    llvm_d.call_intrinsic(
+        None,  # Empty list because intrinsic returns void
+        "llvm.nvvm.tcgen05.mma.shared",  # Intrinsic name
+        [
+            c_tmem,
+            a_desc,
+            b_desc,
+            i_desc,
+            enable_inp,
+            kind_flag,
+            cta_group_flag,
+            collector_flag,
+        ],  # Arguments in order
+        [],  # op_bundle_operands (empty for this intrinsic)
+        [],  # op_bundle_sizes (empty for this intrinsic)
+    )
 
 
 def emit_mfma_scaled(

@@ -14,6 +14,8 @@ import torch.fx as fx
 from wave_lang.support.ir_imports import (
     Attribute,
     DenseElementsAttr,
+    F16Type,
+    F32Type,
     IndexType,
     InsertionPoint,
     IntegerAttr,
@@ -28,6 +30,7 @@ from wave_lang.support.ir_imports import (
     arith_d,
     llvm_d,
     memref_d,
+    nvvm_d,
     vector_d,
     func_d,
     Operation,
@@ -35,6 +38,7 @@ from wave_lang.support.ir_imports import (
 from wave_lang.aot.support.ir_utils import (
     _is_float_type,
 )
+from wave_lang.kernel._support.dtype import f16, f32
 
 from ..._support.indexing import IndexExpr, IndexingContext, IndexSequence, IndexSymbol
 from ...compiler.base import ValidationError
@@ -47,7 +51,9 @@ from ...ops.wave_ops import (
     gather_to_lds,
     get_custom,
     read,
+    read_tmem,
     write,
+    write_tmem,
     scatter_add,
     read_meets_hw_transpose_requirements,
 )
@@ -623,6 +629,196 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         )
 
     emitter.bind_node_proxy(node, IRProxyValue(result))
+
+
+@handle_op(read_tmem)
+def handle_read_tmem(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (tmem_ptr, M_dim, N_dim, dtype, shape, repeat, pack, offset) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+
+    vector_sizes = {
+        # (shape, num) : number of 32-bit registers per thread
+        # for .num = .x1
+        ("16x32bx2", "x1"): 1,
+        ("16x64b", "x1"): 1,
+        ("32x32b", "x1"): 1,
+        ("16x128b", "x1"): 2,
+        ("16x256b", "x1"): 4,
+        # for .num = .x2
+        ("16x32bx2", "x2"): 2,
+        ("16x64b", "x2"): 2,
+        ("32x32b", "x2"): 2,
+        ("16x128b", "x2"): 4,
+        ("16x256b", "x2"): 8,
+        # for .num = .x4
+        ("16x32bx2", "x4"): 4,
+        ("16x64b", "x4"): 4,
+        ("32x32b", "x4"): 4,
+        ("16x128b", "x4"): 8,
+        ("16x256b", "x4"): 16,
+        # for .num = .x8
+        ("16x32bx2", "x8"): 8,
+        ("16x64b", "x8"): 8,
+        ("32x32b", "x8"): 8,
+        ("16x128b", "x8"): 16,
+        ("16x256b", "x8"): 32,
+        # for .num = .x16
+        ("16x32bx2", "x16"): 16,
+        ("16x64b", "x16"): 16,
+        ("32x32b", "x16"): 16,
+        ("16x128b", "x16"): 32,
+        ("16x256b", "x16"): 64,
+        # for .num = .x32
+        ("16x32bx2", "x32"): 32,
+        ("16x64b", "x32"): 32,
+        ("32x32b", "x32"): 32,
+        ("16x128b", "x32"): 64,
+        ("16x256b", "x32"): 128,
+        # for .num = .x64
+        ("16x32bx2", "x64"): 64,
+        ("16x64b", "x64"): 64,
+        ("32x32b", "x64"): 64,
+        ("16x128b", "x64"): 128,
+        # for .num = .x128
+        ("16x32bx2", "x128"): 128,
+        ("16x64b", "x128"): 128,
+        ("32x32b", "x128"): 128,
+    }
+
+    vector_size = vector_sizes.get((shape, repeat))
+    if vector_size is None:
+        raise ValidationError("Unsupported shape/repeat combination for load_tmem")
+
+    shape_attr = Attribute.parse(f"#nvvm.tcgen05_ldst_shape<shape_{shape}>")
+
+    if vector_size == 1:
+        res = IntegerType.get_signless(32)
+    else:
+        res = VectorType.get([vector_size], IntegerType.get_signless(32))
+
+    tmem_ptr = cast_py_value(emitter, tmem_ptr).ir_value
+
+    if shape == "16x32bx2" and offset:
+        offset = arith_d.constant(IntegerType.get_signless(64), offset)
+        result = nvvm_d.tcgen05_ld(
+            res=res,
+            shape=shape_attr,
+            tmem_addr=tmem_ptr,
+            pack=pack if pack else None,
+            offset=offset,
+        )
+    else:
+        result = nvvm_d.tcgen05_ld(
+            res=res,
+            shape=shape_attr,
+            tmem_addr=tmem_ptr,
+            pack=pack if pack else None,
+            offset=None,
+        )
+
+    # cast res type to match dtype (based on instruction descriptor)
+    if vector_size == 1:
+        if dtype == f16:
+            result = arith_d.bitcast(F16Type.get(), result)
+        elif dtype == f32:
+            result = arith_d.bitcast(F32Type.get(), result)
+    else:
+        if dtype == f16:
+            f16_type = VectorType.get([vector_size], F16Type.get())
+            result = arith_d.bitcast(f16_type, result)
+        elif dtype == f32:
+            f32_type = VectorType.get([vector_size], F32Type.get())
+            result = arith_d.bitcast(f32_type, result)
+
+    emitter.bind_node_proxy(node, IRProxyValue(result))
+
+
+@handle_op(write_tmem)
+def handle_write_tmem(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (tmem_ptr, val, shape, repeat, unpack, offset) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+
+    vector_sizes = {
+        # (shape, repeat) : number of 32-bit registers per thread
+        # for .num = .x1
+        ("16x32bx2", "x1"): 1,
+        ("16x64b", "x1"): 1,
+        ("32x32b", "x1"): 1,
+        ("16x128b", "x1"): 2,
+        ("16x256b", "x1"): 4,
+        # for .num = .x2
+        ("16x32bx2", "x2"): 2,
+        ("16x64b", "x2"): 2,
+        ("32x32b", "x2"): 2,
+        ("16x128b", "x2"): 4,
+        ("16x256b", "x2"): 8,
+        # for .num = .x4
+        ("16x32bx2", "x4"): 4,
+        ("16x64b", "x4"): 4,
+        ("32x32b", "x4"): 4,
+        ("16x128b", "x4"): 8,
+        ("16x256b", "x4"): 16,
+        # for .num = .x8
+        ("16x32bx2", "x8"): 8,
+        ("16x64b", "x8"): 8,
+        ("32x32b", "x8"): 8,
+        ("16x128b", "x8"): 16,
+        ("16x256b", "x8"): 32,
+        # for .num = .x16
+        ("16x32bx2", "x16"): 16,
+        ("16x64b", "x16"): 16,
+        ("32x32b", "x16"): 16,
+        ("16x128b", "x16"): 32,
+        ("16x256b", "x16"): 64,
+        # for .num = .x32
+        ("16x32bx2", "x32"): 32,
+        ("16x64b", "x32"): 32,
+        ("32x32b", "x32"): 32,
+        ("16x128b", "x32"): 64,
+        ("16x256b", "x32"): 128,
+        # for .num = .x64
+        ("16x32bx2", "x64"): 64,
+        ("16x64b", "x64"): 64,
+        ("32x32b", "x64"): 64,
+        ("16x128b", "x64"): 128,
+        # for .num = .x128
+        ("16x32bx2", "x128"): 128,
+        ("16x64b", "x128"): 128,
+        ("32x32b", "x128"): 128,
+    }
+
+    vector_size = vector_sizes.get((shape, repeat))
+    print((shape, repeat))
+    print(vector_size)
+    if vector_size is None:
+        raise ValidationError("Unsupported shape/repeat combination for write_tmem")
+
+    shape_attr = Attribute.parse(f"#nvvm.tcgen05_ldst_shape<shape_{shape}>")
+
+    tmem_ptr = cast_py_value(emitter, tmem_ptr).ir_value
+    val = cast_py_value(emitter, val).ir_value
+
+    if shape == "16x32bx2" and offset:
+        offset = arith_d.constant(IntegerType.get_signless(64), offset)
+        nvvm_d.tcgen05_st(
+            shape=shape_attr,
+            tmem_addr=tmem_ptr,
+            val=val,
+            unpack=unpack if unpack else None,
+            offset=offset,
+        )
+    else:
+        nvvm_d.tcgen05_st(
+            shape=shape_attr,
+            tmem_addr=tmem_ptr,
+            val=val,
+            unpack=unpack if unpack else None,
+            offset=None,
+        )
 
 
 @handle_op(write)
