@@ -9,6 +9,7 @@ import torch.fx as fx
 
 from ..._support.indexing import IndexExpr, IndexSequence, IndexSymbol
 from ..._support.tracing import CapturedTrace
+from ..._support.dtype import f16, bf16, f8e4m3fn, f8e5m2, f6e2m3fn, f6e3m2fn, f4e2m1fn, i8
 from ...lang.global_symbols import *
 from ...ops.wave_ops import (
     CustomOp,
@@ -16,6 +17,7 @@ from ...ops.wave_ops import (
     MMABase,
     Reshape,
     ScaledMMA,
+    Tcgen05MMA,
     get_custom,
 )
 from ..constraints import (
@@ -67,6 +69,51 @@ def get_mma_dimensional_mapping(
     mma_nodes = trace.walk(is_mma)
     for node in mma_nodes:
         custom: MMABase = get_custom(node)
+
+        if isinstance(custom, Tcgen05MMA):
+            instr_desc = get_custom(custom.instr_desc)
+            m_dim_mma = instr_desc.M_dim
+            n_dim_mma = instr_desc.N_dim
+            
+            a_type = instr_desc.a_type
+            b_type = instr_desc.b_type
+            d_type = instr_desc.d_type
+            
+            # from PTX ISA Table 39
+            # TODO: Add support for sparse
+            if a_type == f16 and b_type == f16:
+                k_dim_mma = 16
+            elif a_type == bf16 and b_type == bf16:
+                k_dim_mma = 16
+            elif a_type in [f8e4m3fn, f8e5m2, f6e2m3fn, f6e3m2fn, f4e2m1fn] and \
+                 b_type in [f8e4m3fn, f8e5m2, f6e2m3fn, f6e3m2fn, f4e2m1fn]:
+                k_dim_mma = 32
+            elif a_type == i8 and b_type == i8:
+                k_dim_mma = 32
+            else:
+                raise ValueError( f"Unsupported tcgen05 MMA types: {a_type}, {b_type}, {d_type}" )
+            
+            a_desc = get_custom(custom.a_descriptor)
+            a_mem = get_custom(a_desc.smem_ptr)
+            m = a_mem.type.symbolic_shape[0]
+            k = a_mem.type.symbolic_shape[1]
+            
+            b_desc = get_custom(custom.b_descriptor)
+            b_mem = get_custom(b_desc.smem_ptr)
+            n = b_mem.type.symbolic_shape[0]
+            
+            # what this do 
+            if custom not in mapping:
+                mapping[custom] = {}
+            mapping[custom][m] = MMAOperand.M
+            mapping[custom][n] = MMAOperand.N
+            mapping[custom][k] = MMAOperand.K
+            custom.reduction_dim = k
+            
+            custom.vector_shapes = {m: m_dim_mma, n: n_dim_mma, k: k_dim_mma}
+
+            continue
+        
         m, n = custom.acc_type.symbolic_shape[-2:]
         lhs_shape = custom.lhs_type.symbolic_shape
         rhs_shape = custom.rhs_type.symbolic_shape
@@ -179,8 +226,13 @@ def get_mma_dimensional_mapping(
 
     # Look in the backward slices of both the LHS and RHS to find
     # mmas. If found, add reshapes if necessary.
+    # Skip Tcgen05MMA as it doesn't have lhs/rhs attributes
     for mma in mma_nodes:
         custom_mma = get_custom(mma)
+        
+        if isinstance(custom_mma, Tcgen05MMA):
+            continue
+            
         prev_mma = find_mma_in_slice(custom_mma.lhs)
         if prev_mma:
             add_reshape_if_needed(custom_mma, prev_mma, 0)
@@ -189,7 +241,6 @@ def get_mma_dimensional_mapping(
             add_reshape_if_needed(custom_mma, prev_mma, 1)
 
     return mapping
-
 
 def get_mfma_load_elems_per_thread(mfma_variant: MMAType | ScaledMMAType) -> int:
     match mfma_variant:
