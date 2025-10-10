@@ -48,6 +48,12 @@ def memref_to_tensor(memrefs: list[IrType], use_views: bool = False):
         ):
             tensors.append(m)
             continue
+
+        # append llvm pointer types as-it-is to tensors list
+        if str(m).startswith("!llvm.ptr"):
+            tensors.append(m) 
+            continue
+
         assert isinstance(m, MemRefType)
         t = view_type if use_views else RankedTensorType.get(m.shape, m.element_type)
         tensors.append(t)

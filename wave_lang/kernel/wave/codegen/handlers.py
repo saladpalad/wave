@@ -8,14 +8,11 @@ import copy
 import math
 import operator
 from typing import Any, Callable, Sequence
-from wave_lang.kernel.lang.descriptor import InstructionDescriptor
+from wave_lang.kernel.lang.instr_descriptor import InstructionDescriptor
 
 import sympy
 import torch.fx as fx
 import torch.utils._pytree as pytree
-
-# this line is broken
-# from mlir.dialects import nvvm as nvvm_d
 
 from wave_lang.aot.support.ir_utils import (
     _is_float_type,
@@ -37,6 +34,7 @@ from wave_lang.support.ir_imports import (
     IrType,
     MemRefType,
     OpResult,
+    ShapedType,
     Value,
     VectorType,
     amdgpu_d,
@@ -73,6 +71,7 @@ from ...ops.wave_ops import (
     create_smem_descriptor,
     deallocate_tmem,
     cos,
+    cp_async_tma,
     eq,
     exp,
     exp2,
@@ -89,6 +88,9 @@ from ...ops.wave_ops import (
     log2,
     lt,
     maximum,
+    mbar_arrive_expect,
+    mbar_init,
+    mbar_wait_phase,
     minimum,
     mma,
     ne,
@@ -117,6 +119,7 @@ from ...ops.wave_ops import (
     tanh,
     tanh_approx,
     tcgen05_mma,
+    write_async_tma,
     workgroup_barrier,
 )
 from ..compile_options import WaveCompileOptions
@@ -196,50 +199,82 @@ def handle_scalar(emitter: WaveEmitter, node: fx.Node):
 @handle_op(allocate)
 def handle_allocate(emitter: WaveEmitter, node: fx.Node):
     try:
-        (
-            shape,
-            distributed_shape,
-            dtype,
-            address_space,
-            padding,
-            parent,
-            offset,
-            tail_padding,
-        ) = node.args
+        (shape, distributed_shape, dtype, address_space,
+         padding, parent, offset, tail_padding) = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
-
+    
     memref_shape = cast_py_literal(emitter, distributed_shape)
     element_type = IrType.parse(dtype.ir_type_asm())
-    address_space = Attribute.parse("#gpu.address_space<workgroup>")
-    memref_type = MemRefType.get(memref_shape, element_type, None, address_space)
+    address_space_attr = Attribute.parse("#gpu.address_space<workgroup>")
+    memref_type = MemRefType.get(memref_shape, element_type, None, address_space_attr)
+    
+    use_nvidia = True  # or detect from target
 
-    if parent is not None:
-        parent = cast_py_value(emitter, parent).ir_value
-    elif tail_padding != 0:
-        # Tail padded memref cannot be represented as a normal alloc, allocate
-        # a flat i8 array and then view it as the original type.
-        alloc_size = get_custom(node).allocation_size
-        alloc_size = int(subs_idxc(alloc_size))
-        i8_type = IntegerType.get_signless(8)
-        alloc_type = MemRefType.get([alloc_size], i8_type, None, address_space)
-        parent = memref_d.alloc(alloc_type, [], [])
-        offset = 0
-
-    if parent is not None:
-        offset = arith_d.constant(IndexType.get(), int(offset))
+    # TODO Review this 
+    if use_nvidia:
+        # Initialize dynamic shared memory ONCE per kernel
+        if not hasattr(emitter, '_dynamic_shared_base'):
+            i8_type = IntegerType.get_signless(8)
+            dynamic_type = MemRefType.get(
+                [ShapedType.get_dynamic_size()], # or [-1]?
+                i8_type,
+                None,
+                address_space_attr
+            )
+            emitter._dynamic_shared_base = gpu_d.dynamic_shared_memory(dynamic_type)
+            emitter._dynamic_shared_offset = 0
+            emitter._allocations = []
+        
+        # Calculate byte size and alignment
+        elem_size = element_type.width // 8
+        byte_size = math.prod(memref_shape) * elem_size
+        
+        # Align to 128 bytes (or 16 for smaller allocations)
+        alignment = 128 if byte_size >= 128 else 16
+        aligned_offset = (emitter._dynamic_shared_offset + alignment - 1) // alignment * alignment
+        
+        # Create view at current offset
+        offset_val = arith_d.constant(IndexType.get(), aligned_offset)
         alloc = memref_d.view(
             memref_type,
-            parent,
-            offset,
-            [],
+            emitter._dynamic_shared_base,
+            offset_val,
+            []
         )
+        
+        # Track allocation for debugging
+        emitter._allocations.append({
+            'offset': aligned_offset,
+            'size': byte_size,
+            'type': str(memref_type),
+            'node': node.name if hasattr(node, 'name') else str(node)
+        })
+        
+        # Update offset for next allocation
+        emitter._dynamic_shared_offset = aligned_offset + byte_size
+        
         emitter.bind_node_proxy(node, IRProxyValue(alloc))
-        return
-
-    alloc = memref_d.alloc(memref_type, [], [])
-    emitter.bind_node_proxy(node, IRProxyValue(alloc))
-
+    else:
+        # AMD/non-NVIDIA path - use memref.alloc
+        if parent is not None:
+            parent = cast_py_value(emitter, parent).ir_value
+        elif tail_padding != 0:
+            alloc_size = get_custom(node).allocation_size
+            alloc_size = int(subs_idxc(alloc_size))
+            i8_type = IntegerType.get_signless(8)
+            alloc_type = MemRefType.get([alloc_size], i8_type, None, address_space_attr)
+            parent = memref_d.alloc(alloc_type, [], [])
+            offset = 0
+            
+        if parent is not None:
+            offset = arith_d.constant(IndexType.get(), int(offset))
+            alloc = memref_d.view(memref_type, parent, offset, [])
+            emitter.bind_node_proxy(node, IRProxyValue(alloc))
+            return
+            
+        alloc = memref_d.alloc(memref_type, [], [])
+        emitter.bind_node_proxy(node, IRProxyValue(alloc))
 
 @handle_op(allocate_tmem)
 def handle_allocate_tmem(emitter: WaveEmitter, node: fx.Node):
@@ -300,9 +335,6 @@ def handle_deallocate_tmem(emitter: WaveEmitter, node: fx.Node):
         raise ValidationError("Malformed arguments") from e
     tmem_ptr = cast_py_value(emitter, tmem_ptr).ir_value
     emit_tcgen05_dealloc(tmem_ptr, nCols, two_cta_group)
-
-
-#  emitter.bind_node_proxy(node, IRProxyValue(tmem_ptr))
 
 
 def emit_tcgen05_dealloc(tmem_ptr: Value, nCols: int, two_cta_group: bool) -> Value:
@@ -371,6 +403,7 @@ def handle_create_instr_descriptor(emitter: WaveEmitter, node: fx.Node):
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
+    # TODO: Don't hardcode the f16_desc
     # hardcode the kind value for now... but need to figure out a way what ::kind we are doing
     # w/o the user inputting it? Maybe just a bunch of if statements for a_type,b_type,d_type?
     # hardcode f16_desc for now
@@ -387,6 +420,145 @@ def handle_create_instr_descriptor(emitter: WaveEmitter, node: fx.Node):
     # if kind == "f16":
     # desc = InstructionDescriptor.create_f16_desc(a_type, b_type, d_type, transpose_a, transpose_b, N_dim, M_dim)
 
+@handle_op(mbar_init)
+def handle_mbar_init(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (mbar_ptr, count, predicate) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    
+    shared_mem_ptr = cast_py_value(emitter, mbar_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    count = arith_d.constant(IntegerType.get_signless(32), count)
+
+    nvvm_d.mbarrier_init_shared(
+        addr=shared_mem_llvm_ptr,
+        count=count,
+        predicate=predicate,
+    )
+
+
+@handle_op(mbar_arrive_expect)
+def handle_mbar_arrive_expect(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (mbar_ptr, txcount, predicate) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    
+    shared_mem_ptr = cast_py_value(emitter, mbar_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    txcount_val = arith_d.constant(IntegerType.get_signless(32), txcount)
+
+    nvvm_d.mbarrier_arrive_expect_tx_shared(
+        addr=shared_mem_llvm_ptr,
+        txcount=txcount_val,
+        predicate=predicate,
+    )
+
+
+@handle_op(mbar_wait_phase)
+def handle_mbar_wait_phase(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (mbar_ptr, phase, ticks) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    
+    shared_mem_ptr = cast_py_value(emitter, mbar_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    phase = arith_d.constant(IntegerType.get_signless(32), phase)
+    ticks = arith_d.constant(IntegerType.get_signless(32), ticks)
+
+    # mbarrier_try_wait_parity_shared(addr, phase, ticks, *, loc=None, ip=None) -> iree.compiler.dialects._nvvm_ops_gen.MBarrierTryWaitParitySharedOp 
+    nvvm_d.mbarrier_try_wait_parity_shared(
+        addr=shared_mem_llvm_ptr,
+        phase=phase,
+        ticks=ticks,
+    )
+
+
+@handle_op(cp_async_tma)
+def handle_cp_async_tma(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (dst_mem, tma_descriptor, mbar_ptr, coords, cta_group) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    
+    shared_mem_ptr = cast_py_value(emitter, dst_mem).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    # 7 for cluster memory, do we need cluster tho?
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=7)
+    dst_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    tma_descriptor = cast_py_value(emitter, tma_descriptor).ir_value
+
+    shared_mem_ptr = cast_py_value(emitter, mbar_ptr).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    mbar_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+
+    subs = add_emitter_subs(emitter)
+    coords_i32 = []
+    for coord in coords:
+        coord_index = gen_sympy_index(subs, coord) 
+        coord_i32 = arith_d.index_cast(i32_type, coord_index) 
+        coords_i32.append(coord_i32)
+    
+    nvvm_d.cp_async_bulk_tensor_shared_cluster_global(
+        dst_mem=dst_llvm_ptr,
+        tma_descriptor=tma_descriptor,
+        coordinates=coords_i32,
+        mbar=mbar_llvm_ptr,
+        im2col_offsets=[], 
+    )
+
+
+@handle_op(write_async_tma)
+def handle_write_async_tma(emitter: WaveEmitter, node: fx.Node):
+    try:
+        (tma_descriptor, src_mem, coords) = node.args
+    except ValueError as e:
+        raise ValidationError("Malformed arguments") from e
+    
+    tma_descriptor = cast_py_value(emitter, tma_descriptor).ir_value
+
+    shared_mem_ptr = cast_py_value(emitter, src_mem).ir_value
+    memref_idx = memref_d.extract_aligned_pointer_as_index(shared_mem_ptr)
+    i32_type = IntegerType.get_signless(32)
+    shared_mem_ptr = arith_d.index_cast(i32_type, memref_idx)
+    shared_mem_address_space = llvm_d.PointerType.get(address_space=3)
+    shared_mem_llvm_ptr = llvm_d.inttoptr(shared_mem_address_space, shared_mem_ptr)
+    
+    subs = add_emitter_subs(emitter)
+    coords_i32 = []
+    for coord in coords:
+        coord_index = gen_sympy_index(subs, coord) 
+        coord_i32 = arith_d.index_cast(i32_type, coord_index)
+        coords_i32.append(coord_i32)
+    
+    nvvm_d.cp_async_bulk_tensor_global_shared_cta(
+        tma_descriptor=tma_descriptor,
+        src_mem=shared_mem_llvm_ptr, # addr space 3
+        coordinates=coords_i32,
+    )
 
 def _get_start_index(i: IndexSequence | IndexExpr) -> IndexExpr:
     if isinstance(i, IndexSequence):

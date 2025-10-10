@@ -1426,6 +1426,8 @@ class DeallocateTMEM(CustomOp):
     nCols: int
     two_cta_group: bool = None
 
+    def infer_type(self, *args):
+        self.type = None
 
 @define_op("read_tmem")
 @dataclass
@@ -1490,19 +1492,58 @@ class CreateInstrDescriptor(CustomOp):
         self.type = i32
 
 
-@define_op("tcgen05_mma")
+@define_op("mbar_init")
 @dataclass
-class Tcgen05MMA(CustomOp):
-    a_descriptor: fx.Node
-    b_descriptor: fx.Node
-    c_tmem_addr: fx.Node
-    instr_desc: fx.Node
-    enable_accum: bool = False
-    scale_d: int = 0
-    cta_group: int = 1
+class MbarInit(CustomOp):
+    mbar_ptr: fx.Node
+    count: int # num of threads or operations must arrive?
+    predicate: bool = None
 
-    def infer_type(self, *args):
-        self.type = None
+
+@define_op("mbar_arrive_expect")
+@dataclass
+class MbarArriveExpect(CustomOp):
+    mbar_ptr: fx.Node
+    txcount: int
+    predicate: bool = None
+
+
+@define_op("mbar_wait_phase")
+@dataclass
+class MbarWaitPhase(CustomOp):
+    mbar_ptr: fx.Node
+    phase: int # should this be an int or fx.Node? i think it flips right? ^ from 0 to 1, 1 to 0
+    ticks: int = 1000000000
+
+
+@define_op("cp_async_tma")
+@dataclass
+class TMARead(CustomOp):
+    dst_mem: fx.Node
+    tma_descriptor: fx.Node
+    mbar: fx.Node
+    coords: tuple[int, ...]
+    cta_group: int = 1
+    
+    @property
+    def indexing_dims(self):
+        return []
+    
+
+@define_op("write_async_tma")  
+@dataclass
+class TMAWrite(CustomOp):
+    tma_descriptor: fx.Node
+    src_mem: fx.Node
+    coords: tuple[int, ...]
+    
+    @property
+    def indexing_dims(self):
+        return []
+    
+
+
+
 
 
 # TODO: add stubs for dealloc, getTMEM, ld, st
@@ -1886,6 +1927,21 @@ class ScaledMMA(MMABase):
     @reduction_dim.setter
     def reduction_dim(self, value: IndexSymbol):
         self.fx_node.reduction_dim = value
+
+
+@define_op("tcgen05_mma")
+@dataclass
+class Tcgen05MMA(MMABase):
+    a_descriptor: fx.Node
+    b_descriptor: fx.Node
+    c_tmem_addr: fx.Node
+    instr_desc: fx.Node
+    enable_accum: bool = False
+    scale_d: int = 0
+    cta_group: int = 1
+
+    def infer_type(self, *args):
+        self.type = None
 
 
 def get_shape_from_bindings(

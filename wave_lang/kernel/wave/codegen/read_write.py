@@ -720,17 +720,22 @@ def handle_read_tmem(emitter: WaveEmitter, node: fx.Node):
 
     # cast res type to match dtype (based on instruction descriptor)
     if vector_size == 1:
+        # Scalar case
         if dtype == f16:
             result = arith_d.bitcast(F16Type.get(), result)
         elif dtype == f32:
             result = arith_d.bitcast(F32Type.get(), result)
+        # Convert scalar to vector<1x...> for Wave
+        target_type = VectorType.get([1], result.type)
+        result = vector_d.broadcast(target_type, result)
     else:
+        # Vector case
         if dtype == f16:
-            f16_type = VectorType.get([vector_size], F16Type.get())
-            result = arith_d.bitcast(f16_type, result)
+            target_type = VectorType.get([vector_size], F16Type.get())
+            result = arith_d.bitcast(target_type, result)
         elif dtype == f32:
-            f32_type = VectorType.get([vector_size], F32Type.get())
-            result = arith_d.bitcast(f32_type, result)
+            target_type = VectorType.get([vector_size], F32Type.get())
+            result = arith_d.bitcast(target_type, result)
 
     emitter.bind_node_proxy(node, IRProxyValue(result))
 
@@ -792,8 +797,6 @@ def handle_write_tmem(emitter: WaveEmitter, node: fx.Node):
     }
 
     vector_size = vector_sizes.get((shape, repeat))
-    print((shape, repeat))
-    print(vector_size)
     if vector_size is None:
         raise ValidationError("Unsupported shape/repeat combination for write_tmem")
 

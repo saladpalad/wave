@@ -22,6 +22,7 @@ import sympy
 import torch.fx as fx
 
 from wave_lang.kernel._support.dtype import DataType
+from wave_lang.kernel.lang.tma import TMADescriptorType
 from wave_lang.support.ir_imports import (
     Block,
     FunctionType,
@@ -183,6 +184,9 @@ class BindingDesc:
         elif binding_type == BindingType.SYMBOL_VALUE:
             return IndexType.get()
         elif binding_type == BindingType.SCALAR_VALUE:
+            if self.scalar_type is None:
+                # tensor map is opaque pointer type (addr space 0)
+                return IrType.parse("!llvm.ptr")
             return IrType.parse(self.scalar_type.ir_type_asm())
         else:
             raise AssertionError("Unhandled switch BindingType")
@@ -308,7 +312,7 @@ class KernelSignature:
 
         # Sort the arguments based on the original arg_id/ordering.
         # This is set when graph was first traced.
-        placeholder_nodes.sort(key=lambda x: x.meta["arg_id"])
+        placeholder_nodes.sort(key=lambda x: x.meta.get("arg_id", 999)) # TODO: fix this, workaround for now
         # Create bindings for placeholder nodes.
 
         node_type_map = {node: node.type for node in placeholder_nodes}
@@ -352,6 +356,15 @@ class KernelSignature:
                         BindingType.SYMBOL_VALUE,
                         name=node.target,
                         symbol_type=t,
+                    )
+                )
+            elif issubclass(t, TMADescriptorType):
+                self.bindings.append(
+                    BindingDesc(
+                        ("node", node),
+                        BindingType.SCALAR_VALUE,
+                        name=node.target,
+                        scalar_type=None,
                     )
                 )
             else:
