@@ -133,9 +133,6 @@ def get_dim_combinations(
     the keys are the dimensions and the values are the combination.
     """
     dim_scaling = get_scaling(node)
-    if not dim_scaling:
-        print("YELLOW")
-        return [{}]
     adjusted_dimension_sizes = [
         list(range(dim_scaling[dim])) if dim in node.indexing_dims else [0]
         for dim in dim_scaling

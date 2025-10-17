@@ -215,11 +215,7 @@ def handle_allocate(emitter: WaveEmitter, node: fx.Node):
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
-    print(
-        f"ALLOCATE DEBUG: shape={shape}, distributed_shape={distributed_shape}, dtype={dtype}"
-    )
     memref_shape = cast_py_literal(emitter, distributed_shape)
-    print(f"ALLOCATE DEBUG: memref_shape={memref_shape}")
     element_type = IrType.parse(dtype.ir_type_asm())
     address_space = Attribute.parse("#gpu.address_space<workgroup>")
     memref_type = MemRefType.get(memref_shape, element_type, None, address_space)

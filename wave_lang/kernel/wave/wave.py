@@ -1078,7 +1078,7 @@ class LaunchableWave(Launchable):
         self.infer_device_layout(IndexingContext.current())
 
         if options.print_grid:
-            print(f"Grid Dimensions: {self.grid_type.dims}")
+            print(f"Grid Dimensions: {self.grid_type}")
             print(f"Device layout: {self.device_layout}")
 
         # Add grid and block dims to kernel launch info.
