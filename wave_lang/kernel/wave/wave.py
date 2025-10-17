@@ -74,7 +74,6 @@ from .constraints import (
     WaveConstraint,
     WorkgroupConstraint,
     DeviceConstraint,
-    get_grid_shape,
     get_device_layout,
 )
 from .construct_index_mapping import construct_index_mapping
@@ -314,6 +313,97 @@ def _rewrite_module_for_iree_stream_abi(
             old_arg.replace_all_uses_with(new_value)
 
 
+def _check_persistent_scheduler(trace: "CapturedTrace") -> bool:
+    root_graph = trace.get_root_graph()
+    for node in root_graph.nodes:
+        custom_op = get_custom(node)
+        if hasattr(custom_op, "tkw_op_name"):
+            if custom_op.tkw_op_name == "persistent_tile_scheduler":
+                return True
+    return False
+
+
+def _get_persistent_scheduler(trace: "CapturedTrace") -> Optional[fx.Node]:
+    root_graph = trace.get_root_graph()
+    for node in root_graph.nodes:
+        custom_op = get_custom(node)
+        if hasattr(custom_op, "tkw_op_name"):
+            if custom_op.tkw_op_name == "persistent_tile_scheduler":
+                return node
+    return None
+
+
+def _infer_persistent_grid_shape(
+    global_dims: tuple[int, int, int],
+    block_dims: tuple[int, int, int],
+    idxc: IndexingContext,
+    constraints: list[Constraint],
+    options: Optional[WaveCompileOptions] = None,
+) -> list[int]:
+    """
+    Calculate grid dimensions for persistent scheduling.
+
+    Instead of (tiles_m, tiles_n, 1), returns (1, 1, num_persistent_wgs).
+
+    Args:
+        global_dims: (M, N, K) problem dimensions
+        block_dims: (BLOCK_M, BLOCK_N, BLOCK_K) tile dimensions
+        idxc: Indexing context with symbol substitutions
+        options: Compilation options (for GPU info)
+
+    Returns:
+        Grid dimensions [grid_x, grid_y, grid_z]
+    """
+    M, N, K = global_dims
+    BLOCK_M, BLOCK_N, BLOCK_K = block_dims
+
+    M = safe_subs(M, idxc.subs)
+    N = safe_subs(N, idxc.subs)
+    BLOCK_M = safe_subs(BLOCK_M, idxc.subs)
+    BLOCK_N = safe_subs(BLOCK_N, idxc.subs)
+
+    tiles_m = (M + BLOCK_M - 1) // BLOCK_M
+    tiles_n = (N + BLOCK_N - 1) // BLOCK_N
+    total_tiles = tiles_m * tiles_n
+
+    if "gfx942" in options.target:
+        num_compute_units = 304  # mi300x
+    elif "gfx950" in options.target:
+        num_compute_units = 256  # mi350x/mi355x
+
+    hw_constraint = get_hardware_constraint(constraints)
+
+    # threads_per_block is a tuple like (256, 1, 1), so compute total threads
+    threads_per_block_tuple = hw_constraint.threads_per_block
+    total_threads_per_block = (
+        threads_per_block_tuple[0]
+        * threads_per_block_tuple[1]
+        * threads_per_block_tuple[2]
+    )
+
+    threads_per_wave = hw_constraint.threads_per_wave
+    waves_per_workgroup = total_threads_per_block // threads_per_wave
+
+    # query this info from somewhere maybe?
+    waves_per_cu = 4  # TODO: instead of hardcoding, determine how many waves can actually run concurrently per cu
+
+    # wave here means how many workgroups can run in parallel across the CUs
+    num_workgroups_per_wave = (num_compute_units * waves_per_cu) // waves_per_workgroup
+
+    num_persistent_wgs = min(num_compute_units, int(total_tiles))
+    print(f"Threads per block: {hw_constraint.threads_per_block}")
+    print(f"Num of M tiles: {int(tiles_m)}")
+    print(f"Num of N tiles: {int(tiles_n)}")
+    print(f"Total tiles: {int(total_tiles)}")
+    print(f"CUs: {num_compute_units}")
+    print(f"Waves per WG: {waves_per_workgroup}")
+    print(f"Waves per CU: {waves_per_cu}")
+    print(f"WGs per wave: {num_workgroups_per_wave}")
+    print(f"Persistent WGs: {num_persistent_wgs}")
+
+    return [num_persistent_wgs, 1, 1]
+
+
 class LaunchableWave(Launchable):
     def __init__(
         self,
@@ -328,8 +418,13 @@ class LaunchableWave(Launchable):
         self._name = name
         self._f = eager_function
         self._sig = inspect.signature(eager_function)
+        # self.grid_type = Grid[
+        # tuple(get_grid_shape(self.workgroup_constraints, self.device_constraints))
+        # ]
         self.grid_type = Grid[
-            tuple(get_grid_shape(self.workgroup_constraints, self.device_constraints))
+            tuple(
+                [index_symbol("GRID_0"), index_symbol("GRID_1"), index_symbol("GRID_2")]
+            )
         ]
         self.device_layout = Grid[tuple(get_device_layout(self.device_constraints))]
 
@@ -428,9 +523,14 @@ class LaunchableWave(Launchable):
             wave_size = wave_map[dim] if dim in wave_map else None
             workgroup_size = workgroup_map[dim] if dim in workgroup_map else None
 
-            assert (
-                workgroup_size is not None
-            ), f"expected non-empty tile size in `WorkgroupConstraint` for dimension {dim}"
+            if len(self.workgroup_constraints) > 0:
+                assert (
+                    workgroup_size is not None
+                ), f"expected non-empty tile size in `WorkgroupConstraint` for dimension {dim}"
+
+            #            assert (
+            #                workgroup_size is not None
+            #            ), f"expected non-empty tile size in `WorkgroupConstraint` for dimension {dim}"
 
             if wave_size is None:
                 continue
@@ -439,27 +539,29 @@ class LaunchableWave(Launchable):
                 wave_size > 0
             ), f"expected non-zero tile in `WaveConstraint` for dimension {dim}"
 
-            assert (
-                workgroup_size > 0
-            ), f"expected non-zero tile in `WorkgroupConstraint` for dimension {dim}"
+            if len(self.workgroup_constraints) > 0:
+                assert (
+                    workgroup_size > 0
+                ), f"expected non-zero tile in `WorkgroupConstraint` for dimension {dim}"
 
-            assert (
-                workgroup_size >= wave_size
-            ), f"expected workgroup tile size to be the same or larger than wavefront tile size for dimension {dim}"
+                assert (
+                    workgroup_size >= wave_size
+                ), f"expected workgroup tile size to be the same or larger than wavefront tile size for dimension {dim}"
 
-            assert (
-                workgroup_size % wave_size == 0
-            ), f"expected workgroup tile size to be an integral multiple of wavefront tile size for dimension {dim}"
+                assert (
+                    workgroup_size % wave_size == 0
+                ), f"expected workgroup tile size to be an integral multiple of wavefront tile size for dimension {dim}"
 
-        workgroup_dims = set(
-            [cons.workgroup_dim for cons in self.workgroup_constraints]
-        )
+        if len(self.workgroup_constraints) > 0:
+            workgroup_dims = set(
+                [cons.workgroup_dim for cons in self.workgroup_constraints]
+            )
 
-        min_dim = min(workgroup_dims)
-        max_dim = max(workgroup_dims)
-        assert max_dim - min_dim + 1 == len(
-            workgroup_dims
-        ), "expected contiguous indices for `workgroup_dim` field in workgroup constraints"
+            min_dim = min(workgroup_dims)
+            max_dim = max(workgroup_dims)
+            assert max_dim - min_dim + 1 == len(
+                workgroup_dims
+            ), "expected contiguous indices for `workgroup_dim` field in workgroup constraints"
 
         return
 
@@ -491,6 +593,12 @@ class LaunchableWave(Launchable):
 
         return trace
 
+    def _mark_persistent_constraints(self, trace: CapturedTrace) -> None:
+        if _check_persistent_scheduler(trace):
+            print("PERSISTENT MARKER IS RUNNING")
+            for constraint in self.workgroup_constraints:
+                constraint.is_persistent = True
+
     def create_induction_vars(self, trace: CapturedTrace) -> None:
         """
         Creates induction variables for all the reductions in the graph
@@ -521,6 +629,41 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
+
+        # ✅ Handle persistent scheduling (no WorkgroupConstraints)
+        if len(self.workgroup_constraints) == 0:
+            # For persistent kernels, set wave_id manually
+            # All waves are in the first workgroup dimension (dimension 0)
+            for wave_constraint in self.wave_constraints:
+                if wave_constraint.wave_id is None:
+                    # wave_id = floor(thread_id_0 / threads_per_wave)
+                    wave_constraint.wave_id = (
+                        THREAD_0 // hardware_constraint.threads_per_wave
+                    )
+
+            if hardware_constraint.waves_per_block is None:
+                # Compute waves_per_block from WaveConstraints
+                # For persistent mode, all waves are in dimension 0
+                idxc = IndexingContext.current()
+
+                total_waves = 1
+                for wave_constraint in self.wave_constraints:
+                    wave_tile = safe_subs(wave_constraint.tile_size, idxc.subs)
+
+                    # Find the corresponding BLOCK_* symbol
+                    dim_str = str(wave_constraint.dim)
+                    block_symbol = index_symbol(f"BLOCK_{dim_str}")
+
+                    if block_symbol in idxc.subs:
+                        block_tile = safe_subs(block_symbol, idxc.subs)
+                        waves_in_dim = int(block_tile / wave_tile)
+                        total_waves *= waves_in_dim
+
+                # All waves in dimension 0 for persistent scheduling
+                hardware_constraint.waves_per_block = (total_waves, 1, 1)
+
+            return
+
         for wave_constraint in self.wave_constraints:
             for workgroup_constraint in self.workgroup_constraints:
                 if wave_constraint.dim == workgroup_constraint.dim:
@@ -631,8 +774,9 @@ class LaunchableWave(Launchable):
                     subs_idxc(constraint.source_to_target(constraint.target)),
                 )
 
-    def infer_grid_shape(self, idxc: IndexingContext):
-        self.grid_type.dims = [1, 1, 1]
+    def infer_grid_shape(
+        self, idxc: IndexingContext, trace: Optional[CapturedTrace] = None
+    ):
         max_workgroup_dim = 2
 
         for constraint in self.constraints:
@@ -656,6 +800,9 @@ class LaunchableWave(Launchable):
                 else max_workgroup_dim
             )
             self.grid_type.dims[dim] *= safe_subs(constraint.count, idxc.subs)
+
+        # Update symbolic shape for non-persistent case too
+        self.grid_type.symbolic_shape = tuple(self.grid_type.dims)
 
     def infer_device_layout(self, idxc: IndexingContext):
         self.device_layout.dims = [1, 1, 1]
@@ -851,6 +998,9 @@ class LaunchableWave(Launchable):
         debug_handlers = []
 
         trace = self._trace(location_capture_config=options.location_capture_config)
+
+        self._mark_persistent_constraints(trace)
+
         if (
             "all" in print_ir_after
             or "all" in print_ir_before
@@ -993,8 +1143,8 @@ class LaunchableWave(Launchable):
             print(f"***After final pass {p.__name__}***\n")
             print_trace(trace)
 
-        # Determine grid shape.
-        self.infer_grid_shape(IndexingContext.current())
+        self._compile_options = options
+        self.infer_grid_shape(IndexingContext.current(), trace)
         self.infer_device_layout(IndexingContext.current())
 
         if options.print_grid:

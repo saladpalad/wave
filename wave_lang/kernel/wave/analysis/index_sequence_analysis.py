@@ -20,12 +20,14 @@ from ..._support.indexing import IndexSequence, IndexSymbol
 from ..._support.tracing import CapturedTrace
 from ...lang.global_symbols import *
 from ...ops.wave_ops import (
+    AdvanceWorkTile,
     Allocate,
     AtomicOp,
     BinaryPyOp,
     Broadcast,
     CustomOp,
     GetResult,
+    GetCurrentWorkTile,
     IterArg,
     Iterate,
     TensorLoadToLDS,
@@ -34,6 +36,7 @@ from ...ops.wave_ops import (
     MemoryCounterWait,
     NestedRegionOp,
     Output,
+    PersistentTileScheduler,
     Placeholder,
     Read,
     ReduceOp,
@@ -237,6 +240,10 @@ def verify_nodes(trace: CapturedTrace, constraints: list[Constraint]):
             continue
         if isinstance(custom, TensorLoadToLDS):
             continue
+        if isinstance(
+            custom, (PersistentTileScheduler, GetCurrentWorkTile, AdvanceWorkTile)
+        ):
+            continue
         assert (
             custom.index != None
         ), f"Index not set for node {custom.fx_node}: {custom}"
@@ -360,7 +367,9 @@ def set_thread_independent_index(
     Set the index of the node based on all constraints except the hardware constraint.
     """
     custom = get_custom(node)
-    if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
+    if isinstance(
+        custom, (Iterate, Placeholder, GetCurrentWorkTile)
+    ) and not isinstance(custom, IterArg):
         return
 
     has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
