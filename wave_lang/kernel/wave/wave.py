@@ -727,10 +727,7 @@ class LaunchableWave(Launchable):
                 self.grid_type.dims = persistent_grid
                 # Update symbolic_shape for persistent case
                 self.grid_type.symbolic_shape = tuple(persistent_grid)
-                
-                print(f"[Persistent Scheduling] Problem: {problem_shape[:2]}, "
-                    f"Block: {block_shape[:2]}")
-                
+
                 return 
         
         print("INFER IS RUNNING")
@@ -1093,7 +1090,7 @@ class LaunchableWave(Launchable):
         self.infer_grid_shape(IndexingContext.current(), trace)
         self.infer_device_layout(IndexingContext.current())
         if options.print_grid:
-            print(f"Grid Dimensions: {self.grid_type.dims}")
+            print(f"Grid Dimensions: {self.grid_type}")
             print(f"Device layout: {self.device_layout}")
 
         # Add grid and block dims to kernel launch info.
