@@ -643,7 +643,7 @@ class WorkgroupConstraint(DistributionConstraint):
     primary: Optional[bool] = True
     iters: Optional[IndexExpr | int] = None
     per_device_dim: Optional[IndexExpr] = None
-    is_persistent: bool = False    
+    is_persistent: bool = False
 
     def __post_init__(self):
         self.wg_dim = None
@@ -859,7 +859,6 @@ class WaveConstraint(DistributionConstraint):
     @property
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
-            return 1
             raise ValueError("Wave constraint has no workgroup constraint")
 
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
@@ -867,7 +866,6 @@ class WaveConstraint(DistributionConstraint):
     @property
     def workgroup_dim(self) -> int:
         if not self.wg_constraint:
-            return 1
             raise ValueError("Wave constraint has no workgroup constraint")
 
         return self.wg_constraint.workgroup_dim

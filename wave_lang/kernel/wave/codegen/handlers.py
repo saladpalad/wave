@@ -1435,7 +1435,7 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
         axis, init_args, subgraph, implicit_capture, step, start, condition = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
-    if axis == PERSISTENT_TILE:
+    if axis == PERSISTENT:
         return handle_iterate_persistent_while(emitter, node)
 
     if start:
@@ -2281,9 +2281,6 @@ def handle_iterate_persistent_while(emitter: WaveEmitter, node: fx.Node):
     init_n_offset = init_values[1]
     init_work_tile_idx = init_values[2]
     init_is_valid = init_values[3]
-
-    # zero_i32 = arith_d.constant(i32_type, 0)
-    # init_work_tile_is_valid = arith_d.cmpi(arith_d.CmpIPredicate.ne, init_is_valid, zero_i32)
 
     init_args = [init_m_offset, init_n_offset, init_work_tile_idx, init_is_valid]
     init_arg_types = [i32_type, i32_type, i32_type, i1_type]
