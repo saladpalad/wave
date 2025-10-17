@@ -332,6 +332,7 @@ def _get_persistent_scheduler(trace: "CapturedTrace") -> Optional[fx.Node]:
                 return node
     return None
 
+
 def _infer_persistent_grid_shape(
     global_dims: tuple[int, int, int],
     block_dims: tuple[int, int, int],
@@ -342,29 +343,30 @@ def _infer_persistent_grid_shape(
 
     M, N, K = global_dims
     BLOCK_M, BLOCK_N, BLOCK_K = block_dims
-    
+
     M = safe_subs(M, idxc.subs)
     N = safe_subs(N, idxc.subs)
     BLOCK_M = safe_subs(BLOCK_M, idxc.subs)
     BLOCK_N = safe_subs(BLOCK_N, idxc.subs)
-    
+
     tiles_m = (M + BLOCK_M - 1) // BLOCK_M
     tiles_n = (N + BLOCK_N - 1) // BLOCK_N
     total_tiles = tiles_m * tiles_n
-    
-    if 'gfx942' in options.target:
-        num_compute_units = 304 # mi300x
-    elif 'gfx950' in options.target:
-        num_compute_units = 256 # mi350x/mi355x
-    
+
+    if "gfx942" in options.target:
+        num_compute_units = 304  # mi300x
+    elif "gfx950" in options.target:
+        num_compute_units = 256  # mi350x/mi355x
+
     num_persistent_wgs = min(num_compute_units, int(total_tiles))
     print(f"Num of M tiles: {int(tiles_m)}")
     print(f"Num of N tiles: {int(tiles_n)}")
     print(f"Total tiles: {int(total_tiles)}")
     print(f"CUs: {num_compute_units}")
     print(f"Persistent WGs: {num_persistent_wgs}")
-    
+
     return [num_persistent_wgs, 1, 1]
+
 
 class LaunchableWave(Launchable):
     def __init__(
@@ -545,7 +547,6 @@ class LaunchableWave(Launchable):
 
     def _mark_persistent_constraints(self, trace: CapturedTrace) -> None:
         if _check_persistent_scheduler(trace):
-            print("PERSISTENT MARKER IS RUNNING")
             for constraint in self.workgroup_constraints:
                 constraint.is_persistent = True
 
@@ -579,21 +580,6 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-        for wave_constraint in self.wave_constraints:
-            for workgroup_constraint in self.workgroup_constraints:
-                if wave_constraint.dim == workgroup_constraint.dim:
-                    wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                        hardware_constraint, workgroup_constraint
-                    )
-
-        if hardware_constraint.waves_per_block is None:
-            waves_per_block = [1, 1, 1]
-            for wave_constraint in self.wave_constraints:
-                count = subs_idxc(wave_constraint.waves_per_block)
-                waves_per_block[wave_constraint.workgroup_dim] = count
-
-            hardware_constraint.waves_per_block = tuple(waves_per_block)
-
         for wave_constraint in self.wave_constraints:
             for workgroup_constraint in self.workgroup_constraints:
                 if wave_constraint.dim == workgroup_constraint.dim:
@@ -704,33 +690,31 @@ class LaunchableWave(Launchable):
                     subs_idxc(constraint.source_to_target(constraint.target)),
                 )
 
-    def infer_grid_shape(self, idxc: IndexingContext, trace: Optional[CapturedTrace] = None):
+    def infer_grid_shape(
+        self, idxc: IndexingContext, trace: Optional[CapturedTrace] = None
+    ):
         self.grid_type.dims = [1, 1, 1]
         max_workgroup_dim = 2
-        
-        # Only check for persistent scheduler if we have a trace
+
         if trace is not None and _check_persistent_scheduler(trace):
             scheduler_node = _get_persistent_scheduler(trace)
             if scheduler_node:
                 custom = get_custom(scheduler_node)
                 problem_shape = custom.global_dims
-                block_shape = custom.block_dims   
-                
+                block_shape = custom.block_dims
+
                 persistent_grid = _infer_persistent_grid_shape(
                     problem_shape,
                     block_shape,
                     idxc,
                     self.constraints,
-                    getattr(self, '_compile_options', None)
+                    getattr(self, "_compile_options", None),
                 )
-                
-                self.grid_type.dims = persistent_grid
-                # Update symbolic_shape for persistent case
-                self.grid_type.symbolic_shape = tuple(persistent_grid)
 
-                return 
-        
-        print("INFER IS RUNNING")
+                self.grid_type.dims = persistent_grid
+                self.grid_type.symbolic_shape = tuple(persistent_grid)
+                return
+
         aliases = [x.source for x in self.constraints if isinstance(x, SymbolicAlias)]
         for constraint in self.workgroup_constraints:
             if constraint.dim in aliases:
@@ -743,9 +727,6 @@ class LaunchableWave(Launchable):
                 else max_workgroup_dim
             )
             self.grid_type.dims[dim] *= safe_subs(constraint.count, idxc.subs)
-        
-        # IMPORTANT: Update symbolic_shape for non-persistent case too!
-        self.grid_type.symbolic_shape = tuple(self.grid_type.dims)
 
     def infer_device_layout(self, idxc: IndexingContext):
         self.device_layout.dims = [1, 1, 1]
@@ -942,6 +923,7 @@ class LaunchableWave(Launchable):
 
         trace = self._trace(location_capture_config=options.location_capture_config)
 
+        # do not use workgroup constraints to determine indexing/tile offsets when persistent scheduler is enabled
         self._mark_persistent_constraints(trace)
 
         if (

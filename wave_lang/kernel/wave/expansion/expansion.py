@@ -710,7 +710,7 @@ def fixup_iterate_nodes(
 
     for iterate in reversed(iterate_nodes):
         iterate = get_custom(iterate)
-        if iterate.axis == PERSISTENT_TILE:
+        if iterate.axis == PERSISTENT:
             continue
         reduction_subgraph = trace.get_subgraph(iterate.subgraph_name)
         output = get_custom(get_last(reduction_subgraph.nodes))

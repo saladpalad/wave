@@ -2568,32 +2568,19 @@ class GetResult(CustomOp):
         else:
             self.type = src_type
 
-    # TODO Review this
     @property
     def indexing_dims(self) -> list[IndexExpr]:
-        src_custom = get_custom(self.value)
-        src_indexing = src_custom.indexing_dims
-
-        # Check if source returns multiple values by looking at its type
-        src_type = src_custom.type
-        has_multiple_values = isinstance(src_type, list)
-
-        if has_multiple_values:
-            # If indexing_dims is a list of lists, extract the one for this result
-            # Note: all([]) returns True, so we need to check length first
-            has_multiple_indexing = len(src_indexing) > 0 and all(
-                isinstance(el, list) for el in src_indexing
-            )
-            if has_multiple_indexing:
-                assert self.res_idx < len(src_indexing), f"{self=}"
-                src_indexing = src_indexing[self.res_idx]
-            # Otherwise, all results share the same indexing_dims (or it's empty for scalars)
-
-        # Validate that src_indexing is a proper list of IndexExpr
-        assert isinstance(src_indexing, list) and all(
-            isinstance(el, IndexExpr) for el in src_indexing
-        ), f"Invalid indexing_dims for {self=}: {src_indexing}"
-
+        has_multiple_value = lambda x: len(x) > 0 and all(
+            isinstance(el, list) for el in x
+        )
+        is_valid_indexing_dim = lambda x: isinstance(src_indexing, list) and all(
+            isinstance(el, IndexExpr) for el in x
+        )
+        src_indexing = get_custom(self.value).indexing_dims
+        if has_multiple_value(src_indexing):
+            assert self.res_idx < len(src_indexing), f"{self=}"
+            src_indexing = src_indexing[self.res_idx]
+        assert is_valid_indexing_dim(src_indexing)
         return src_indexing
 
     @property
@@ -3197,18 +3184,14 @@ class PersistentTileScheduler(CustomOp):
     Returns initial tile_idx
     """
 
-    global_dims: tuple[IndexSymbol, IndexSymbol, IndexSymbol]  # (M, N, K)
-    block_dims: tuple[
-        IndexSymbol, IndexSymbol, IndexSymbol
-    ]  # (BLOCK_M, BLOCK_N, BLOCK_K)
+    global_dims: tuple[IndexSymbol, IndexSymbol, IndexSymbol]
+    block_dims: tuple[IndexSymbol, IndexSymbol, IndexSymbol]
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
         return []
 
     def infer_type(self, *args):
-        from wave_lang.kernel._support.dtype import i32
-
         self.type = i32
 
 
@@ -3223,8 +3206,6 @@ class GetCurrentWorkTile(CustomOp):
         return []
 
     def infer_type(self, *args):
-        from wave_lang.kernel._support.dtype import i32
-
         self.type = i32
 
 
@@ -3234,6 +3215,4 @@ class AdvanceWorkTile(CustomOp):
     tile_idx: fx.Node
 
     def infer_type(self, *args):
-        from wave_lang.kernel._support.dtype import i32
-
         self.type = i32
