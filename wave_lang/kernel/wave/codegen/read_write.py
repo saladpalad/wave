@@ -694,7 +694,7 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     )
 
     # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets"):
+    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
         start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
 
     if read_meets_hw_transpose_requirements(
@@ -782,7 +782,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     )
 
     # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets"):
+    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
         start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
 
     _create_vec_read_write(
