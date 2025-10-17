@@ -31,6 +31,7 @@ from ..constraints import (
     HardwareConstraint,
     TilingConstraint,
     WorkgroupConstraint,
+    WaveConstraint,
 )
 from ..utils.general_utils import infer_dim
 from ..utils.graph_utils import (
@@ -74,6 +75,10 @@ def get_dim_scaling(
         infer_dim(size_expr): size_expr
         for size_expr in getattr(node.type, "symbolic_shape", [])
     }
+
+    # Check if this is a persistent kernel (no workgroup constraints)
+    has_wg_constraints = any(isinstance(c, WorkgroupConstraint) for c in constraints)
+
     for constraint in constraints:
         if isinstance(constraint, (WorkgroupConstraint, TilingConstraint)):
             hw_cons = hardware_constraints[0]
@@ -83,8 +88,6 @@ def get_dim_scaling(
                 constraint.dim in dim_to_shape
                 and constraint.dim != dim_to_shape[constraint.dim]
             ):
-                # Sub in tile size into shape:
-                # (e.g, shape = K/32, constraint_tile = BLOCK_K -> tile_size = BLOCK_K/32)
                 tile_size = dim_to_shape[constraint.dim].subs(
                     constraint.dim, constraint.tile_size
                 )
@@ -107,11 +110,25 @@ def get_dim_scaling(
 
             dim_scaling[constraint.dim] = ceildiv(tile_size, wave_count * vector_size)
 
+        # For persistent kernels, also process WaveConstraints to get dim_scaling
+        elif isinstance(constraint, WaveConstraint) and not has_wg_constraints:
+            if constraint.dim not in node.vector_shapes:
+                continue
+            vector_size = node.vector_shapes[constraint.dim]
+            if vector_size == 0:
+                continue
+
+            tile_size = idxc.get_static_value(constraint.tile_size)
+            if tile_size is None or vector_size is None:
+                raise ValueError("Tile size and vector size must be statically known")
+
+            # For persistent kernels, each wave handles its tile directly
+            dim_scaling[constraint.dim] = ceildiv(tile_size, vector_size)
+
     if isinstance(node.type, DataType):
         return {}
 
     # Also include dimensions that have no constraints on them and are known.
-    idxc = IndexingContext.current()
     is_static_dim = lambda dim: dim in idxc.subs
     is_non_batch = lambda dim: node.vector_shapes[dim] > 0
     not_computed = lambda dim: dim not in dim_scaling
