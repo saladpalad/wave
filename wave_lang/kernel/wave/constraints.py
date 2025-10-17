@@ -643,7 +643,7 @@ class WorkgroupConstraint(DistributionConstraint):
     primary: Optional[bool] = True
     iters: Optional[IndexExpr | int] = None
     per_device_dim: Optional[IndexExpr] = None
-    is_persistent: bool = False
+    is_persistent: bool = False    
 
     def __post_init__(self):
         self.wg_dim = None
