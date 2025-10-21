@@ -481,12 +481,30 @@ class WaveEmitter:
             logger.error(f"Error handling {node}")
             raise e
 
+
     def lookup_node_values(self, node: fx.Node) -> List[Value]:
         assert NDEBUG or isinstance(node, fx.Node)
         values = self._node_values.get(node)
+
+        if values is None and hasattr(node, 'name'):
+            for key, val in self._node_values.items():
+                if hasattr(key, 'name') and key.name == node.name:
+                    values = val
+                    self._node_values[node] = values
+                    break
+        
         if values is None:
             raise CodegenError(f"Node {node} has no IR Value")
 
+            # Force arg binding insertion point to be at the function level to
+            # avoid dominance errors when buffer is used inside multiple
+            # scf constructs.
+            ip = InsertionPoint.current
+            while not isinstance(ip.block.owner, func_d.FuncOp):
+                ip = InsertionPoint(ip.block.owner)
+            with ip:
+                values = [self.root_sig.resolve_by_reference(("node", node))]
+            self._node_values[node] = values
         values = [v.ir_value if isinstance(v, IRProxyValue) else v for v in values]
         return values
 
