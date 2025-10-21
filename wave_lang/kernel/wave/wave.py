@@ -337,7 +337,6 @@ def _infer_persistent_grid_shape(
     global_dims: tuple[int, int, int],
     block_dims: tuple[int, int, int],
     idxc: IndexingContext,
-    constraints: list[Constraint],
     options: Optional[WaveCompileOptions] = None,
 ) -> list[int]:
 
@@ -707,8 +706,7 @@ class LaunchableWave(Launchable):
                     problem_shape,
                     block_shape,
                     idxc,
-                    self.constraints,
-                    getattr(self, "_compile_options", None),
+                    getattr(self, "compile_options", None),
                 )
 
                 self.grid_type.dims = persistent_grid
@@ -1068,7 +1066,8 @@ class LaunchableWave(Launchable):
             print(f"***After final pass {p.__name__}***\n")
             print_trace(trace)
 
-        self._compile_options = options
+        self.compile_options = options
+        # Determine grid shape.
         self.infer_grid_shape(IndexingContext.current(), trace)
         self.infer_device_layout(IndexingContext.current())
         if options.print_grid:
