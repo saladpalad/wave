@@ -3179,11 +3179,6 @@ class ScatterAdd(CustomOp):
 @define_op("persistent_tile_scheduler")
 @dataclass
 class PersistentTileScheduler(CustomOp):
-    """
-    Creates a persistent tile scheduler.
-    Returns initial tile_idx
-    """
-
     global_dims: tuple[IndexSymbol, IndexSymbol, IndexSymbol]
     block_dims: tuple[IndexSymbol, IndexSymbol, IndexSymbol]
 
