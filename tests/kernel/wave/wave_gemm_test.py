@@ -2571,13 +2571,17 @@ def testGemmTransposeAB(
 
 @require_e2e
 @pytest.mark.parametrize("shape", [(2048, 2048, 2048)])
-@pytest.mark.parametrize("mfma_variant", [ MMAType.F32_16x16x16_F16],)
+@pytest.mark.parametrize(
+    "mfma_variant",
+    [MMAType.F32_16x16x16_F16],
+)
 def test_persistent_gemm(
     shape: tuple[int],
     mfma_variant: MMAType,
 ):
     gemm, options = get_gemm_persistent_kernel(
-        shape, mfma_variant,
+        shape,
+        mfma_variant,
     )
 
     options = set_default_run_config(options)

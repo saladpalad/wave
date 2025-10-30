@@ -2150,7 +2150,9 @@ def test_persistent_gemm():
         b: tkl.Memory[N, K, ADDRESS_SPACE, tkl.f16],
         c: tkl.Memory[M, N, ADDRESS_SPACE_0, tkl.f32],
     ):
-        scheduler = tkw.persistent_tile_scheduler((M, N, K), (BLOCK_M, BLOCK_N, BLOCK_K))
+        scheduler = tkw.persistent_tile_scheduler(
+            (M, N, K), (BLOCK_M, BLOCK_N, BLOCK_K)
+        )
         work_tile = tkw.get_current_work_tile(scheduler)
 
         @tkw.iterate(axis=PERSISTENT, init_args=[work_tile])
@@ -2193,21 +2195,21 @@ def test_persistent_gemm():
 
     # CHECK:            %[[BLOCK_ID_X:.+]] = gpu.block_id  x
     # CHECK:            %[[BLOCK_ID_CAST:.+]] = arith.index_cast %[[BLOCK_ID_X]] : index to i32
-    
+
     # Tile offsets for persistent CTA
     # CHECK:            %[[TILE_CHECK:.+]] = arith.cmpi ult, %[[BLOCK_ID_CAST]], %{{.*}} : i32
     # CHECK:            %[[TILE_M:.+]] = arith.divui %[[BLOCK_ID_CAST]], %{{.*}} : i32
     # CHECK:            %[[TILE_N:.+]] = arith.remui %[[BLOCK_ID_CAST]], %{{.*}} : i32
     # CHECK:            %[[OFFSET_M:.+]] = arith.muli %[[TILE_M]], %{{.*}} : i32
     # CHECK:            %[[OFFSET_N:.+]] = arith.muli %[[TILE_N]], %{{.*}} : i32
-    
+
     # Persistent loop
     # CHECK:            %[[GRID_DIM_X:.+]] = gpu.grid_dim  x
     # CHECK:            %[[GRID_CAST:.+]] = arith.index_cast %[[GRID_DIM_X]] : index to i32
     # CHECK:            %{{.*}}:3 = scf.while (%{{.*}} = %[[OFFSET_M]], %{{.*}} = %[[OFFSET_N]], %{{.*}} = %[[BLOCK_ID_CAST]], %{{.*}} = %[[TILE_CHECK]]) : (i32, i32, i32, i1) -> (i32, i32, i32) {
     # CHECK:              scf.condition(%{{.*}}) %{{.*}}, %{{.*}}, %{{.*}} : i32, i32, i32
     # CHECK:            } do {
-    
+
     # Advance to next work tile
     # CHECK:              %{{.*}} = arith.addi %{{.*}}, %[[GRID_CAST]] : i32
     # CHECK:              scf.yield {{.*}} : i32, i32, i32, i1

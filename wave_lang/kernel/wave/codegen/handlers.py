@@ -2204,8 +2204,6 @@ def handle_get_current_work_tile(emitter: WaveEmitter, node: fx.Node):
     )
 
 
-
-
 @handle_op(advance_work_tile)
 def handle_advance_work_tile(emitter: WaveEmitter, node: fx.Node):
     try:

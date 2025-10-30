@@ -294,7 +294,9 @@ def get_gemm_persistent_kernel(
         b: tkl.Memory[N, K, ADDRESS_SPACE, tkl.f16],
         c: tkl.Memory[M, N, GLOBAL_ADDRESS_SPACE, tkl.f32],
     ):
-        scheduler = tkw.persistent_tile_scheduler((M, N, K), (BLOCK_M, BLOCK_N, BLOCK_K))
+        scheduler = tkw.persistent_tile_scheduler(
+            (M, N, K), (BLOCK_M, BLOCK_N, BLOCK_K)
+        )
         work_tile = tkw.get_current_work_tile(scheduler)
 
         @tkw.iterate(axis=PERSISTENT, init_args=[work_tile])
@@ -316,8 +318,12 @@ def get_gemm_persistent_kernel(
     M_val, N_val, K_val = shape
     options = WaveCompileOptions(
         subs={
-            M: M_val, N: N_val, K: K_val,
-            BLOCK_M: 64, BLOCK_N: 256, BLOCK_K: 16,
+            M: M_val,
+            N: N_val,
+            K: K_val,
+            BLOCK_M: 64,
+            BLOCK_N: 256,
+            BLOCK_K: 16,
             ADDRESS_SPACE: SHARED_ADDRESS_SPACE,
         },
         canonicalize=True,
