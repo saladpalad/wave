@@ -354,12 +354,6 @@ def _infer_persistent_grid_shape(
         num_compute_units = 256  # mi350x/mi355x
 
     num_persistent_wgs = min(num_compute_units, int(total_tiles))
-    print(f"Num of M tiles: {int(tiles_m)}")
-    print(f"Num of N tiles: {int(tiles_n)}")
-    print(f"Total tiles: {int(total_tiles)}")
-    print(f"CUs: {num_compute_units}")
-    print(f"Persistent WGs: {num_persistent_wgs}")
-
     return [num_persistent_wgs, 1, 1]
 
 

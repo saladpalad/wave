@@ -2176,11 +2176,12 @@ def handle_get_current_work_tile(emitter: WaveEmitter, node: fx.Node):
 
     m_tiles = (M + BLOCK_M - 1) // BLOCK_M
     n_tiles = (N + BLOCK_N - 1) // BLOCK_N
-    num_tiles = m_tiles * n_tiles
+    k_tiles = (K + BLOCK_K - 1) // BLOCK_K
+    num_output_tiles = m_tiles * n_tiles
 
     i32_type = IntegerType.get_signless(32)
 
-    num_tiles_i32 = arith_d.constant(i32_type, num_tiles)
+    num_tiles_i32 = arith_d.constant(i32_type, num_output_tiles)
     is_valid = arith_d.cmpi(arith_d.CmpIPredicate.ult, tile_idx, num_tiles_i32)
 
     n_tiles_i32 = arith_d.constant(i32_type, n_tiles)
@@ -2203,6 +2204,8 @@ def handle_get_current_work_tile(emitter: WaveEmitter, node: fx.Node):
     )
 
 
+
+
 @handle_op(advance_work_tile)
 def handle_advance_work_tile(emitter: WaveEmitter, node: fx.Node):
     try:
@@ -2219,7 +2222,7 @@ def handle_advance_work_tile(emitter: WaveEmitter, node: fx.Node):
 
     i32_type = IntegerType.get_signless(32)
 
-    # Stride each CTA's work_tile_idx by grid_dim_x
+    # Stride each CTA's work_tile_idx by grid_dim_x (num of CTAs)
     stride = arith_d.index_cast(i32_type, gpu_d.grid_dim(gpu_d.Dimension.x))
     new_tile_idx = arith_d.addi(tile_idx, stride)
 
