@@ -406,34 +406,6 @@ def _cast_buffer_and_encode_stride(
     return ptr
 
 
-def _add_tile_offset(emitter, start_indices, memory):
-    # don't add offset to indices when writing to shared memory
-    if memory.type.address_space == SHARED_ADDRESS_SPACE:
-        return start_indices
-
-    symbolic_shape = memory.type.symbolic_shape
-    start_indices_with_tile_offset = list(start_indices)
-
-    for idx, dim in enumerate(symbolic_shape):
-        dim_str = str(dim)
-        if "M" in dim_str:
-            offset_index = arith_d.index_cast(
-                IndexType.get(), emitter.tile_offsets["M"]
-            )
-            start_indices_with_tile_offset[idx] = arith_d.addi(
-                start_indices_with_tile_offset[idx], offset_index
-            )
-        elif "N" in dim_str:
-            offset_index = arith_d.index_cast(
-                IndexType.get(), emitter.tile_offsets["N"]
-            )
-            start_indices_with_tile_offset[idx] = arith_d.addi(
-                start_indices_with_tile_offset[idx], offset_index
-            )
-
-    return start_indices_with_tile_offset
-
-
 def _create_vec_read_write(
     emitter: WaveEmitter,
     symbolic_shape: tuple[IndexExpr, ...],
@@ -633,11 +605,6 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
     )
-
-    # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
-        start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
-
     if read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
@@ -708,11 +675,6 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
     )
-
-    # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
-        start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
-
     _create_vec_read_write(
         emitter,
         output_shape,
