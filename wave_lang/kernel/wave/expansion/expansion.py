@@ -14,7 +14,7 @@ from torch import fx
 
 from wave_lang.support.logging import get_logger
 
-from wave_lang.kernel.lang.global_symbols import *
+from wave_lang.kernel.lang.global_symbols import PERSISTENT
 from ..._support.dtype import DataType
 from ..._support.indexing import IndexingContext, IndexSymbol
 from ..._support.tracing import CapturedTrace
