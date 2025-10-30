@@ -263,13 +263,6 @@ class WaveEmitter:
         assert NDEBUG or isinstance(node, fx.Node)
         values = self._node_values.get(node)
 
-        if values is None and hasattr(node, "name"):
-            for key, val in self._node_values.items():
-                if hasattr(key, "name") and key.name == node.name:
-                    values = val
-                    self._node_values[node] = values
-                    break
-
         if values is None:
             raise CodegenError(f"Node {node} has no IR Value")
 
