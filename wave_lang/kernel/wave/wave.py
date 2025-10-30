@@ -314,60 +314,6 @@ def _rewrite_module_for_iree_stream_abi(
             old_arg.replace_all_uses_with(new_value)
 
 
-def _check_persistent_scheduler(trace: "CapturedTrace") -> bool:
-    root_graph = trace.get_root_graph()
-    for node in root_graph.nodes:
-        custom_op = get_custom(node)
-        if hasattr(custom_op, "tkw_op_name"):
-            if custom_op.tkw_op_name == "persistent_tile_scheduler":
-                return True
-    return False
-
-
-def _get_persistent_scheduler(trace: "CapturedTrace") -> Optional[fx.Node]:
-    root_graph = trace.get_root_graph()
-    for node in root_graph.nodes:
-        custom_op = get_custom(node)
-        if hasattr(custom_op, "tkw_op_name"):
-            if custom_op.tkw_op_name == "persistent_tile_scheduler":
-                return node
-    return None
-
-
-def _infer_persistent_grid_shape(
-    global_dims: tuple[int, int, int],
-    block_dims: tuple[int, int, int],
-    idxc: IndexingContext,
-    options: Optional[WaveCompileOptions] = None,
-) -> list[int]:
-
-    M, N, K = global_dims
-    BLOCK_M, BLOCK_N, BLOCK_K = block_dims
-
-    M = safe_subs(M, idxc.subs)
-    N = safe_subs(N, idxc.subs)
-    BLOCK_M = safe_subs(BLOCK_M, idxc.subs)
-    BLOCK_N = safe_subs(BLOCK_N, idxc.subs)
-
-    tiles_m = (M + BLOCK_M - 1) // BLOCK_M
-    tiles_n = (N + BLOCK_N - 1) // BLOCK_N
-    total_tiles = tiles_m * tiles_n
-
-    if "gfx942" in options.target:
-        num_compute_units = 304  # mi300x
-    elif "gfx950" in options.target:
-        num_compute_units = 256  # mi350x/mi355x
-
-    num_persistent_wgs = min(num_compute_units, int(total_tiles))
-    print(f"Num of M tiles: {int(tiles_m)}")
-    print(f"Num of N tiles: {int(tiles_n)}")
-    print(f"Total tiles: {int(total_tiles)}")
-    print(f"CUs: {num_compute_units}")
-    print(f"Persistent WGs: {num_persistent_wgs}")
-
-    return [num_persistent_wgs, 1, 1]
-
-
 class LaunchableWave(Launchable):
     def __init__(
         self,
@@ -545,11 +491,6 @@ class LaunchableWave(Launchable):
 
         return trace
 
-    def _mark_persistent_constraints(self, trace: CapturedTrace) -> None:
-        if _check_persistent_scheduler(trace):
-            for constraint in self.workgroup_constraints:
-                constraint.is_persistent = True
-
     def create_induction_vars(self, trace: CapturedTrace) -> None:
         """
         Creates induction variables for all the reductions in the graph
@@ -589,9 +530,20 @@ class LaunchableWave(Launchable):
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
+            thread_dim_idx = 0
             for wave_constraint in self.wave_constraints:
                 count = subs_idxc(wave_constraint.waves_per_block)
-                waves_per_block[wave_constraint.workgroup_dim] = count
+                wg_constraint = None
+                for wg in self.workgroup_constraints:
+                    if wg.dim == wave_constraint.dim:
+                        wg_constraint = wg
+                        break
+
+                if wg_constraint and wg_constraint.apply_fn is not None:
+                    waves_per_block[thread_dim_idx] = count
+                    thread_dim_idx += 1
+                else:
+                    waves_per_block[wave_constraint.workgroup_dim] = count
 
             hardware_constraint.waves_per_block = tuple(waves_per_block)
 
@@ -690,9 +642,7 @@ class LaunchableWave(Launchable):
                     subs_idxc(constraint.source_to_target(constraint.target)),
                 )
 
-    def infer_grid_shape(
-        self, idxc: IndexingContext, trace: Optional[CapturedTrace] = None
-    ):
+    def infer_grid_shape(self, idxc: IndexingContext):
         self.grid_type.dims = [1, 1, 1]
         max_workgroup_dim = 2
 
@@ -912,10 +862,6 @@ class LaunchableWave(Launchable):
         debug_handlers = []
 
         trace = self._trace(location_capture_config=options.location_capture_config)
-
-        # do not use workgroup constraints to determine indexing/tile offsets when persistent scheduler is enabled
-        self._mark_persistent_constraints(trace)
-
         if (
             "all" in print_ir_after
             or "all" in print_ir_before
@@ -1058,13 +1004,12 @@ class LaunchableWave(Launchable):
             print(f"***After final pass {p.__name__}***\n")
             print_trace(trace)
 
-        self.compile_options = options
         # Determine grid shape.
-        self.infer_grid_shape(IndexingContext.current(), trace)
+        self.infer_grid_shape(IndexingContext.current())
         self.infer_device_layout(IndexingContext.current())
 
         if options.print_grid:
-            print(f"Grid Dimensions: {self.grid_type}")
+            print(f"Grid Dimensions: {self.grid_type.dims}")
             print(f"Device layout: {self.device_layout}")
 
         # Add grid and block dims to kernel launch info.
