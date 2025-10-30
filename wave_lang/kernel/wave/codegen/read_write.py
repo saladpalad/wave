@@ -220,6 +220,7 @@ def _build_mask_from_indices(
     base_idx_i32 = arith_d.index_cast(i32_type, base_idx)
 
     mask_elements = []
+    # apply masking during runtime
     for i in range(elements_per_thread):
         element_offset = arith_d.constant(i32_type, i)
         element_idx = arith_d.addi(base_idx_i32, element_offset)

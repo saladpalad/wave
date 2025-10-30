@@ -359,9 +359,7 @@ def _infer_persistent_grid_shape(
     elif "gfx1200" in options.target:
         num_compute_units = 32  # rx 9060 xt
     else:
-        raise ValueError(
-            f"Unsupported target '{options.target}' for persistent grid shape inference. "
-        )
+        num_compute_units = 16 # default
 
     num_persistent_wgs = min(num_compute_units, int(total_tiles))
 
