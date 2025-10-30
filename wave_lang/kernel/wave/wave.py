@@ -351,15 +351,15 @@ def _infer_persistent_grid_shape(
     if "gfx942" in options.target:
         num_compute_units = 304
     elif "gfx950" in options.target:
-        num_compute_units = 256 
+        num_compute_units = 256
     elif "gfx90a" in options.target:
-        num_compute_units = 128 
+        num_compute_units = 128
     elif "gfx1201" in options.target:
-        num_compute_units = 64 
+        num_compute_units = 64
     elif "gfx1200" in options.target:
         num_compute_units = 32
     else:
-        num_compute_units = 16 
+        num_compute_units = 16
 
     num_persistent_wgs = min(num_compute_units, int(total_tiles))
 
