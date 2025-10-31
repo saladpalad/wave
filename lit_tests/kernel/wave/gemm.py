@@ -2130,6 +2130,7 @@ def test_gemm_with_transpose_a_b_gfx950():
     # CHECK-COUNT-8:    amdgpu.mfma {{.*}} * {{.*}} + {{.*}} blgp = none : vector<{{.*}}xf16>, vector<{{.*}}xf16>, vector<{{.*}}xf32>
 
 
+@run_test
 def test_persistent_gemm():
     constraints: list[tkw.Constraint] = [tkw.WorkgroupConstraint(M, BLOCK_M, 0)]
     constraints += [tkw.WorkgroupConstraint(N, BLOCK_N, 1)]

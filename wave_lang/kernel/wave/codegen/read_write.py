@@ -455,14 +455,14 @@ def _add_tile_offset(emitter, start_indices, memory):
 
     for idx, dim in enumerate(symbolic_shape):
         dim_str = str(dim)
-        if "M" in dim_str:
+        if dim_str == "M":
             offset_index = arith_d.index_cast(
                 IndexType.get(), emitter.tile_offsets["M"]
             )
             start_indices_with_tile_offset[idx] = arith_d.addi(
                 start_indices_with_tile_offset[idx], offset_index
             )
-        elif "N" in dim_str:
+        elif dim_str == "N":
             offset_index = arith_d.index_cast(
                 IndexType.get(), emitter.tile_offsets["N"]
             )
@@ -674,7 +674,7 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     )
 
     # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
+    if emitter.tile_offsets:
         start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
         mask = _build_mask_from_indices(
             emitter, start_indices, input_shape, elements_per_thread, bounds
@@ -752,7 +752,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     )
 
     # make sure to add tile_offsets for corresponding wg in persistence
-    if hasattr(emitter, "tile_offsets") and emitter.tile_offsets:
+    if emitter.tile_offsets:
         start_indices = _add_tile_offset(emitter, start_indices, get_custom(memory))
         mask = _build_mask_from_indices(
             emitter, start_indices, input_shape, elements_per_thread, bounds

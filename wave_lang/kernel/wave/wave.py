@@ -333,7 +333,7 @@ def _infer_persistent_grid_shape(
     global_dims: tuple[int, int, int],
     block_dims: tuple[int, int, int],
     idxc: IndexingContext,
-    options: Optional[WaveCompileOptions] = None,
+    options: WaveCompileOptions,
 ) -> list[int]:
 
     M, N, K = global_dims

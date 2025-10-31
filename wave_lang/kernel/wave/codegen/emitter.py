@@ -90,7 +90,6 @@ class WaveEmitter:
     OP_HANDLERS: ClassVar[dict[str, Callable[["WaveEmitter", fx.Node], None]]] = {}
     _node_values: ClassVar[dict[fx.Node, List[IRProxyValue]]] = {}
     tile_offsets: dict[str, Value] = field(default_factory=dict)
-    next_tile_is_valid: Optional[Value] = None
 
     def __post_init__(self):
         self.dynamic_symbols = self.options.dynamic_symbols
