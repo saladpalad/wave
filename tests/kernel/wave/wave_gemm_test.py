@@ -2788,12 +2788,17 @@ def test_explicit_shared_gemm(m, n, k, block_m, block_n, block_k, run_bench):
 @require_e2e
 @pytest.mark.parametrize("shape", [(2048, 2048, 2048)])
 @pytest.mark.parametrize(
-    "mfma_variant",
-    [MMAType.F32_16x16x16_F16],
+    "mfma_variant, threads_per_wave",
+    [
+        pytest.param(MMAType.F32_16x16x16_F16, 64, marks=require_cdna_3_or_4),
+        pytest.param(MMAType.F32_32x32x8_F16, 64, marks=require_cdna_3_or_4),
+        pytest.param(MMAType.RDNA4_WAVE32_F32_16x16x16_F16, 32, marks=require_rdna4),
+    ],
 )
 def test_persistent_gemm(
     shape: tuple[int],
     mfma_variant: MMAType,
+    threads_per_wave: int,
 ):
     from sympy import ceiling, floor
 
@@ -2827,7 +2832,9 @@ def test_persistent_gemm(
         tkw.WaveConstraint(M, BLOCK_M / 2),
         tkw.WaveConstraint(N, BLOCK_N / 2),
         tkw.HardwareConstraint(
-            threads_per_wave=64, mma_type=mfma_variant, vector_shapes={TILE_IDX: 0}
+            threads_per_wave=threads_per_wave,
+            mma_type=mfma_variant,
+            vector_shapes={TILE_IDX: 0},
         ),
     ]
 
