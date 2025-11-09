@@ -23,7 +23,7 @@ def reorder_workgroups(graph: CapturedTrace, reordering_constraints):
     ops_with_implicit_index = (Iterate, GetResult)
     for node in graph_nodes:
         custom_node = get_custom(node)
-        if not isinstance(custom_node, ops_with_implicit_index) and custom_node.index:
+        if custom_node.index and not isinstance(custom_node, ops_with_implicit_index):
             index = copy.deepcopy(node.index)
             for dim in index:
                 index[dim] = index[dim].subs(wg_subs, simultaneous=True)
