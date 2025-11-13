@@ -424,7 +424,7 @@ def add_get_results(trace: CapturedTrace):
             for subgraph in trace.region_graph.subgraphs.values():
                 for node in subgraph.nodes:
                     if node.meta.get("lifted", None) == iterate.fx_node:
-                            node.meta["lifted"] = get_result.fx_node
+                        node.meta["lifted"] = get_result.fx_node
 
 
 def populate_inputs(
@@ -705,6 +705,8 @@ def fixup_iterate_nodes(
     """
     iterate_context = expansion_context.iterate_context
     iterate_nodes = trace.walk(lambda x: isinstance(get_custom(x), Iterate))
+    nodes_to_erase = []
+
     for iterate in reversed(iterate_nodes):
         iterate = get_custom(iterate)
         reduction_subgraph = trace.get_subgraph(iterate.subgraph_name)
@@ -744,9 +746,13 @@ def fixup_iterate_nodes(
             get_result.index = get_item.index
             get_result = get_custom(get_result)
             get_item.replace_all_uses_with(get_result)
-            get_item.erase()
+            nodes_to_erase.append(get_item)
 
         remove_original_nodes(return_vals)
+
+    for node in nodes_to_erase:
+        if not node.fx_node.users:
+            node.erase()
 
     # For conditional nodes, update the condition to use the expanded nodes.
     for conditional in trace.walk(lambda x: isinstance(get_custom(x), Conditional)):
