@@ -423,8 +423,7 @@ def add_get_results(trace: CapturedTrace):
 
             for subgraph in trace.region_graph.subgraphs.values():
                 for node in subgraph.nodes:
-                    if "lifted" in node.meta:
-                        if node.meta["lifted"] == iterate.fx_node:
+                    if node.meta.get("lifted", None) == iterate.fx_node:
                             node.meta["lifted"] = get_result.fx_node
 
 
