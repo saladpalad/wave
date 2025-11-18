@@ -150,6 +150,7 @@ def read(
     elements_per_thread: Optional[IndexExpr | int] = None,
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
+    volatile: bool = False,
 ) -> "Register": ...
 
 
@@ -559,6 +560,7 @@ def define_interface_op(op_name: str) -> Callable[[T], T]:
 def get_custom(node: fx.Node) -> "CustomOp":
     """Get the corresponding CustomOp for a given fx.Node."""
     if not isinstance(node, fx.Node):
+        #breakpoint()
         raise ValueError(f"Expected an fx.Node but got {type(node)}")
 
     # If the node was created as a CustomOp it has a corresponding field
@@ -1031,6 +1033,15 @@ class BinaryOpBase(CustomOp, ABC):
     def infer_shape(self) -> Any:
         lhs_type = get_custom(self.lhs).type
         rhs_type = get_custom(self.rhs).type
+
+        # Handle cases where type is None
+        if lhs_type is None or rhs_type is None:
+            raise ValueError(
+                f"Type inference failed for binary operation: "
+                f"lhs_type={lhs_type}, rhs_type={rhs_type}. "
+                f"Ensure both operands have proper types."
+            )
+
         if isinstance(lhs_type, DataType) and isinstance(rhs_type, DataType):
             has_same_type = True
         else:
@@ -1921,6 +1932,7 @@ class Read(CustomOp):
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
     _write_dependency: Optional[list[fx.Node]] = None
+    volatile: bool = False
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
@@ -2074,6 +2086,7 @@ class NestedRegionOp(CustomOp):
         return captured_vars
 
     def get_outer_node(self, outer_node: fx.Node) -> fx.Node:
+#        breakpoint()
         while "lifted" in outer_node.meta:
             outer_node = outer_node.meta["lifted"]
         return outer_node
@@ -2082,6 +2095,7 @@ class NestedRegionOp(CustomOp):
         self, graph: fx.Graph, outer_node: fx.Node
     ) -> Optional[fx.Node]:
         outer_node = self.get_outer_node(outer_node)
+#        breakpoint()
         for var in self.captured_vars(graph):
             custom = get_custom(var)
             if custom.get_captured_fx_node() == outer_node:
@@ -2211,6 +2225,9 @@ class Iterate(NestedRegionOp):
         return_vals = return_node.return_vals[0]
         if not isinstance(return_vals, Sequence):
             return_vals = [return_vals]
+        # Handle empty return values (e.g., while loops with no outputs) fixes bug
+        if not return_vals or all(x is None or (isinstance(x, Sequence) and len(x) == 0) for x in return_vals):
+            return []
         for return_val in return_vals:
             return_dims = get_custom(return_val).indexing_dims
             reduced_dims = [dims for dims in return_dims if dims != self.axis]

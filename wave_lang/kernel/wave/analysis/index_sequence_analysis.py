@@ -255,6 +255,7 @@ def verify_nodes(trace: CapturedTrace, constraints: list[Constraint]):
                 custom.vector_shapes = {}
                 for dim in update_vector_shapes:
                     custom.vector_shapes[dim] = hw_constraint.vector_shapes[dim]
+        #breakpoint()
         assert (
             custom.vector_shapes
         ), f"Vector shapes not set for node {custom.fx_node}: {custom}"

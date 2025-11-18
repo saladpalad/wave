@@ -625,6 +625,10 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
+    # Check if this is a volatile load
+    custom = get_custom(node)
+    is_volatile = custom.volatile if hasattr(custom, 'volatile') else False
+
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
     # memory has no IR node yet.
     kb_src, kb_ir_type, kb_py_type = cast_kernel_buffer(emitter, memory)
@@ -664,7 +668,41 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
     )
-    if read_meets_hw_transpose_requirements(
+
+    # Handle volatile loads using LLVM dialect
+    if is_volatile:
+        # Convert memref to LLVM pointer and use volatile load
+        # Get the base pointer from the memref as an index
+        ptr = memref_d.extract_aligned_pointer_as_index(kb_src)
+
+        # Compute the linear byte offset from the start indices
+        # We need to multiply each index by its corresponding stride and element size
+        strides, _ = kb_ir_type.get_strides_and_offset()
+        offset = arith_d.constant(IndexType.get(), 0)
+        elem_size_bytes = element_type.width // 8  # Convert bits to bytes
+        for idx, stride in zip(start_indices, strides):
+            # Ensure idx is an index type
+            if not IndexType.isinstance(idx.type):
+                idx = arith_d.index_cast(IndexType.get(), idx)
+            # Multiply index by stride and element size
+            stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
+            stride_offset = arith_d.muli(idx, stride_val)
+            offset = arith_d.addi(offset, stride_offset)
+
+        # Add offset to base pointer
+        final_ptr_index = arith_d.addi(ptr, offset)
+
+        # Convert index to i64 for LLVM inttoptr (LLVM requires integer types, not index)
+        i64 = IntegerType.get_signless(64)
+        final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
+
+        # Convert i64 to LLVM pointer type
+        llvm_ptr_type = llvm_d.PointerType.get()
+        llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
+
+        # Perform volatile load
+        result = llvm_d.LoadOp(vector_type, llvm_ptr, volatile_=True).result
+    elif read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
         result = amdgpu_d.transpose_load(vector_type, kb_src, start_indices)

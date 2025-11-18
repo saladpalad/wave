@@ -1417,6 +1417,11 @@ def handle_conditional(emitter: WaveEmitter, node: fx.Node):
     with InsertionPoint(if_op.then_block) as ip:
         subgraph: fx.Graph = emitter.trace.get_subgraph(subgraph)
 
+        # Debug: print the subgraph
+        #logger.debug(f"Conditional subgraph nodes:")
+        #for n in subgraph.nodes:
+            #logger.debug(f"  {n.op} {n.name} {n.target} args={n.args}")
+
         captured_vars: list[fx.Node] = get_custom(node).captured_vars(subgraph)
         for root_v, subgraph_v in zip(implicit_capture, captured_vars):
             emitter._node_values[subgraph_v] = emitter.lookup_node_values(root_v)
@@ -1437,6 +1442,23 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
 
     # Flatten init_args and get IR values for each of them.
     flat_init_args, _ = pytree.tree_flatten((init_args))
+    # Ensure any unemitted nodes in init_args are emitted/bound first
+    for arg in flat_init_args:
+        if isinstance(arg, fx.Node) and arg not in emitter._node_values:
+            # Check if this is a get_result or other node that needs emission
+            if get_custom(arg).tkw_op_name == "get_result":
+                ## Emit the get_result node directly
+                emitter._emit_function_call_node(arg)
+            # If this is a placeholder with a lifted value, bind it from parent graph
+            elif "lifted" in arg.meta:
+                root_v = arg.meta["lifted"]
+                # Follow the lifted chain to the actual root node
+                while "lifted" in root_v.meta:
+                    root_v = root_v.meta["lifted"]
+                # If the root value hasn't been emitted, emit it now
+                if root_v not in emitter._node_values:
+                    emitter._emit_function_call_node(root_v)
+                emitter._node_values[arg] = emitter.lookup_node_values(root_v)
     flat_init_args = [cast_py_value(emitter, arg) for arg in flat_init_args]
 
     start = arith_d.constant(IndexType.get(), int(0))
