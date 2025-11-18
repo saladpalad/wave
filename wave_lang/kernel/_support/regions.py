@@ -112,6 +112,8 @@ class SubgraphTracer(fx.Tracer):
             return self.lifted_freevars[proxy]
 
         # Otherwise, create a new input and store it.
+        #if "iterate" in proxy.node.name or proxy.node.name == "iterate":
+            #breakpoint()
         new_proxy = self._create_graph_input(
             proxy.node, proxy.node.name, proxy.node.type
         )
