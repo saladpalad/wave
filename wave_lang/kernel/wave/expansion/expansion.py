@@ -421,6 +421,11 @@ def add_get_results(trace: CapturedTrace):
             )
             iterate.replace_all_uses_with_except(get_result, [get_result])
 
+            for subgraph in trace.region_graph.subgraphs.values():
+                for node in subgraph.nodes:
+                    if node.meta.get("lifted", None) == iterate.fx_node:
+                            node.meta["lifted"] = get_result.fx_node
+
 
 def populate_inputs(
     node: CustomOp,
@@ -704,7 +709,8 @@ def fixup_iterate_nodes(
         iterate = get_custom(iterate)
         reduction_subgraph = trace.get_subgraph(iterate.subgraph_name)
         output = get_custom(get_last(reduction_subgraph.nodes))
-        if all(x is None for x in output.return_vals):
+        # Skip if all return values are None or empty (e.g., while loops with no outputs)
+        if all(x is None or (isinstance(x, Sequence) and len(x) == 0) for x in output.return_vals):
             continue
         return_vals = output.return_vals[0]
         if isinstance(return_vals, Sequence):
