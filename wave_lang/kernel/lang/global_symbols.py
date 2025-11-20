@@ -33,6 +33,10 @@ THREAD_0 = index_symbol("$T0")
 THREAD_1 = index_symbol("$T1")
 THREAD_2 = index_symbol("$T2")
 
+BLOCKDIM_0 = index_symbol("$BLOCKDIM_0")
+BLOCKDIM_1 = index_symbol("$BLOCKDIM_1")
+BLOCKDIM_2 = index_symbol("$BLOCKDIM_2")
+
 # MMA symbols.
 MMA_LHS = index_symbol("$MMA_LHS")
 MMA_RHS = index_symbol("$MMA_RHS")
