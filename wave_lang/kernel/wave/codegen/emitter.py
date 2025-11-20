@@ -220,7 +220,7 @@ class WaveEmitter:
                     static_sizes=static_sizes,
                     static_strides=static_strides,
                 )
-#                breakpoint()
+                #                breakpoint()
                 self._node_values[node] = [res]
             func_d.return_([])
 
@@ -483,9 +483,9 @@ class WaveEmitter:
     def lookup_node_values(self, node: fx.Node) -> List[Value]:
         assert NDEBUG or isinstance(node, fx.Node)
         values = self._node_values.get(node)
-        #if values is None:
-            #breakpoint()
-        #breakpoint()
+        # if values is None:
+        # breakpoint()
+        # breakpoint()
         if values is None:
             raise CodegenError(f"Node {node} has no IR Value")
 
@@ -557,8 +557,21 @@ def add_emitter_subs(
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_1
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_2
     ]
+
+    # Add block dimension constants
+    threads_per_block = emitter.hardware_constraint.threads_per_block
+    blockdim_constants = [
+        arith_d.constant(IndexType.get(), int(threads_per_block[0])),  # BLOCKDIM_X
+        arith_d.constant(IndexType.get(), int(threads_per_block[1])),  # BLOCKDIM_Y
+        arith_d.constant(IndexType.get(), int(threads_per_block[2])),  # BLOCKDIM_Z
+    ]
+
     all_symbols = (
-        emitter.thread_ids + emitter.workgroup_ids + device_zeros + induction_vars
+        emitter.thread_ids
+        + emitter.workgroup_ids
+        + device_zeros
+        + blockdim_constants
+        + induction_vars
     )
     dynamics = dict(
         zip(
@@ -572,6 +585,9 @@ def add_emitter_subs(
                 DEVICE_DIM_0,
                 DEVICE_DIM_1,
                 DEVICE_DIM_2,
+                BLOCKDIM_0,
+                BLOCKDIM_1,
+                BLOCKDIM_2,
             ]
             + induction_var_syms,
             all_symbols,
