@@ -399,7 +399,6 @@ def get_largest_index_and_size(
     """
     if custom_op and not custom_op.indexing_dims:
         return ((), 1)
-
     sorted_values = sorted(
         [
             (i, dim, subs_idxc(index.size))
