@@ -814,12 +814,12 @@ def handle_div(lhs: Value, rhs: Value, options: WaveCompileOptions) -> OpResult:
 @handle_binary_op(operator.floordiv)
 def handle_floordiv(lhs: Value, rhs: Value, options: WaveCompileOptions) -> OpResult:
     element_type = get_type_or_element_type(lhs.type)
-    if is_integer_like_type(element_type) and is_signed_or_signless_type(
-        element_type
-    ):
+    if is_integer_like_type(element_type) and is_signed_or_signless_type(element_type):
         result = arith_d.floordivsi(lhs, rhs)
     else:
-        raise ValidationError(f"Found unhandled operand type for floordiv: {element_type}")
+        raise ValidationError(
+            f"Found unhandled operand type for floordiv: {element_type}"
+        )
     return result
 
 
@@ -1414,9 +1414,9 @@ def handle_conditional(emitter: WaveEmitter, node: fx.Node):
         subgraph: fx.Graph = emitter.trace.get_subgraph(subgraph)
 
         # Debug: print the subgraph
-        #logger.debug(f"Conditional subgraph nodes:")
-        #for n in subgraph.nodes:
-            #logger.debug(f"  {n.op} {n.name} {n.target} args={n.args}")
+        # logger.debug(f"Conditional subgraph nodes:")
+        # for n in subgraph.nodes:
+        # logger.debug(f"  {n.op} {n.name} {n.target} args={n.args}")
 
         captured_vars: list[fx.Node] = get_custom(node).captured_vars(subgraph)
         for root_v, subgraph_v in zip(implicit_capture, captured_vars):
@@ -1476,6 +1476,7 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
             "Could not determine step size for reduction due to missing tiling constraint."
         )
 
+    #    breakpoint()
     forOp = scf_d.ForOp(
         start,
         end,
