@@ -483,9 +483,6 @@ class WaveEmitter:
     def lookup_node_values(self, node: fx.Node) -> List[Value]:
         assert NDEBUG or isinstance(node, fx.Node)
         values = self._node_values.get(node)
-        # if values is None:
-        # breakpoint()
-        # breakpoint()
         if values is None:
             raise CodegenError(f"Node {node} has no IR Value")
 

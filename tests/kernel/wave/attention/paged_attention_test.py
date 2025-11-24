@@ -482,6 +482,7 @@ def testPagedFlashDecodingMHA(
     options = WaveCompileOptions(
         subs=hyperparams_1,
         canonicalize=True,
+        print_mlir=True,
         run_bench=run_bench,
         schedule=enable_scheduling,
         dynamic_symbols=dynamic_symbols_1,

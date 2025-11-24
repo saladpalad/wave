@@ -1418,9 +1418,9 @@ def handle_conditional(emitter: WaveEmitter, node: fx.Node):
         subgraph: fx.Graph = emitter.trace.get_subgraph(subgraph)
 
         # Debug: print the subgraph
-        #logger.debug(f"Conditional subgraph nodes:")
-        #for n in subgraph.nodes:
-            #logger.debug(f"  {n.op} {n.name} {n.target} args={n.args}")
+        # logger.debug(f"Conditional subgraph nodes:")
+        # for n in subgraph.nodes:
+        # logger.debug(f"  {n.op} {n.name} {n.target} args={n.args}")
 
         captured_vars: list[fx.Node] = get_custom(node).captured_vars(subgraph)
         for root_v, subgraph_v in zip(implicit_capture, captured_vars):
@@ -1480,6 +1480,7 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
             "Could not determine step size for reduction due to missing tiling constraint."
         )
 
+    #    breakpoint()
     forOp = scf_d.ForOp(
         start,
         end,
