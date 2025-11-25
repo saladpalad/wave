@@ -43,6 +43,10 @@ from wave_lang.kernel.wave.templates.gemm import (
 from wave_lang.kernel.wave.templates.test_kernels import (
     get_gemm_prefetch_kernel_and_schedule,
 )
+from wave_lang.kernel.wave.schedules.gemm_two_pp_cluster import (
+    get_tagged_gemm,
+    get_two_pp_cluster_schedule,
+)
 from wave_lang.kernel.lang import DataType
 import os
 import json
@@ -2425,6 +2429,44 @@ def test_gemm_prefetch_manual_schedule(shape: tuple[int], mfma_variant: MMAType)
     assert_close(c, iree_ref, check_device=False)
 
 
+@pytest.mark.parametrize("shape", [(128, 256, 1024)])
+@pytest.mark.parametrize("mfma_variant", [MMAType.F32_16x16x16_F16])
+@require_e2e
+@require_cdna_3_or_4
+def test_gemm_prefetch_reorder_manual_schedule(
+    shape: tuple[int], mfma_variant: MMAType
+):
+    """
+    Test the advanced GEMM prefetch+reorder+stagger kernel template from test_kernels.py.
+
+    This test demonstrates the full manual scheduling pipeline with:
+    - 2-stage pipelining
+    - Cluster-based reordering for latency hiding
+    - 2-way wave staggering
+    """
+    # Use the wrapper function to get kernel, schedule, and options
+    gemm, options = get_tagged_gemm(shape, mfma_variant, compile_to_mlir=False)
+    schedule = get_two_pp_cluster_schedule()
+    # Set runtime configuration for execution
+    options = set_default_run_config(options)
+
+    # Compile the kernel with the schedule
+    gemm = wave_compile(options, gemm, schedule)
+
+    # Create test data
+    a = device_randn(shape[0], shape[2], device="cuda", dtype=torch.float16)
+    b = device_randn(shape[1], shape[2], device="cuda", dtype=torch.float16)
+    c = device_randn(shape[0], shape[1], device="cuda", dtype=torch.float32)
+
+    # Run the kernel
+    asm = gemm(a, b, c)
+
+    # Verify results with IREE reference
+    iree_ref = device_zeros(shape[0], shape[1], dtype=torch.float32)
+    generate_iree_ref("mmt", [a, b], [iree_ref], options)
+    assert_close(c, iree_ref, check_device=False)
+
+
 @require_e2e
 @require_gfx1250
 @pytest.mark.parametrize(
@@ -2454,12 +2496,11 @@ def testTensorLoadToShared(
     BLOCK_K = tkl.sym.BLOCK_K
     ADDRESS_SPACE = tkl.sym.ADDRESS_SPACE
 
-    # Current tdm works for a single wave
     constraints: list[tkw.Constraint] = [tkw.WorkgroupConstraint(M, BLOCK_M, 0)]
     constraints += [tkw.WorkgroupConstraint(N, BLOCK_N, 1)]
     constraints += [tkw.TilingConstraint(K, BLOCK_K)]
-    constraints += [tkw.WaveConstraint(M, BLOCK_M)]
-    constraints += [tkw.WaveConstraint(N, BLOCK_N)]
+    constraints += [tkw.WaveConstraint(M, BLOCK_M / 2)]
+    constraints += [tkw.WaveConstraint(N, BLOCK_N / 2)]
 
     constraints += [
         tkw.HardwareConstraint(threads_per_wave=threads_per_wave, mma_type=mfma_variant)
@@ -2484,9 +2525,9 @@ def testTensorLoadToShared(
 
     hyperparams = {
         ADDRESS_SPACE: SHARED_ADDRESS_SPACE,
-        BLOCK_M: 16,
-        BLOCK_N: 16,
-        BLOCK_K: 16,
+        BLOCK_M: 32,
+        BLOCK_N: 32,
+        BLOCK_K: 32,
         M: shape[0],
         N: shape[1],
         K: shape[2],

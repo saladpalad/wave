@@ -378,14 +378,8 @@ def emit_wmma(
 ) -> Value:
     source_a, source_b = values
     if intr == MMAType.GFX1250_F32_16x16x32_F16:
-        # TODO: Use amdgpu intrinsic when it is supported
-        f = arith_d.constant(IntegerType.get_signless(1), 0)
-        t = arith_d.constant(IntegerType.get_signless(1), 1)
-        i16 = arith_d.constant(IntegerType.get_signless(16), 0)
-        v16f32 = VectorType.get((8,), F32Type.get())
-        res = rocdl_d.wmma_f32_16x16x32_f16(
-            v16f32, [f, source_a, f, source_b, i16, acc, f, t]
-        )
+        v8f32 = VectorType.get((8,), F32Type.get())
+        res = rocdl_d.wmma_f32_16x16x32_f16(v8f32, source_a, source_b, acc)
         return res.result
 
     return amdgpu_d.wmma(m, n, k, source_a, source_b, acc)
@@ -1637,11 +1631,6 @@ def handle_shared_memory_barrier(emitter: WaveEmitter, node: fx.Node):
     if wait_async_ops:
         waitcnt(0)
 
-    if tensor_wait:
-        # TODO(megan.kuo): Use rocdl intrinsic when iree has support
-        c0 = arith_d.constant(IntegerType.get_signless(16), 0)
-        llvm_d.call_intrinsic(None, "llvm.amdgcn.s.wait.tensorcnt", [c0], [], [])
-
     amdgpu_d.lds_barrier()
 
 
@@ -1649,14 +1638,16 @@ def handle_shared_memory_barrier(emitter: WaveEmitter, node: fx.Node):
 def handle_shared_memory_barrier_signal(emitter: WaveEmitter, node: fx.Node):
     try:
         barId = node.args[0]
-        wait_async_ops = node.args[1]
+        tensor_wait = node.args[1]
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
-    rocdl_d.s_wait_dscnt(0)
+    if tensor_wait:
+        # TODO(megan.kuo): Use rocdl intrinsic when iree has support
+        c0 = arith_d.constant(IntegerType.get_signless(16), 0)
+        llvm_d.call_intrinsic(None, "llvm.amdgcn.s.wait.tensorcnt", [c0], [], [])
 
-    if wait_async_ops:
-        rocdl_d.s_wait_loadcnt(0)
+    rocdl_d.s_wait_dscnt(0)
 
     rocdl_d.s_barrier_signal(barId)
 

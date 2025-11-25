@@ -22,7 +22,7 @@ from ..lang.wave_types import IndexMapping, SymbolBind
 from ..ops.base import (
     OpDispatcher,
 )
-from ..ops.wave_ops import CustomOp
+from ..ops.wave_ops import CustomOp, get_custom
 from ..ops.wave_schedule_ops import CustomScheduleOp
 from ..wave.constraints import Constraint
 from . import context
@@ -199,6 +199,36 @@ class CapturedTrace:
                     nodes.append(node)
         return nodes
 
+    def walk_graph(
+        self, name: str, filter: Optional[Callable[[fx.Node], bool]] = None
+    ) -> list[fx.Node]:
+        """
+        Traverse a graph without recursing into subgraphs. The granularity of this method is limited to a single graph.
+        """
+        nodes: list[fx.Node] = []
+        graph = self.get_subgraph(name)
+        for node in graph.nodes:
+            if filter is None or filter(node):
+                nodes.append(node)
+        return nodes
+
+    def preorder_walk(
+        self, name: str = "", filter: Optional[Callable[[fx.Node], bool]] = None
+    ) -> list[fx.Node]:
+        """
+        Pre-order traversal of a graph, if name of a graph is not provided, this method starts from the root graph.
+        """
+        nodes: list[fx.Node] = []
+        if name == "":
+            name = self.root_graph
+        graph = self.get_subgraph(name)
+        for node in graph.nodes:
+            if filter is None or filter(node):
+                nodes.append(node)
+            if hasattr(get_custom(node), "subgraph_name"):
+                nodes.extend(self.preorder_walk(get_custom(node).subgraph_name, filter))
+        return nodes
+
     def snapshot_node_state(self) -> None:
         # Snapshot supplemental node fields for pickling
         for node in self.walk():
@@ -276,11 +306,13 @@ class ScheduleContext(BaseContext):
         region_graph: RegionGraph,
         kernel_trace=None,
         constraints: list[Constraint] = None,
+        use_scheduling_barriers: bool = False,
     ):
         super().__init__(eager=False)
         self.region_graph = region_graph
         self.kernel_trace = kernel_trace
         self.constraints = constraints
+        self.use_scheduling_barriers = use_scheduling_barriers
         # Dictionary to maintain mapping from proxies to their results
         self.proxy_to_results: Dict[fx.Proxy, Any] = {}
 
