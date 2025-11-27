@@ -752,7 +752,6 @@ class TilingConstraint(DistributionConstraint):
             raise ValueError(
                 f"Index is being computed without setting induction variable for dimension {self.dim}"
             )
-        print("tiling apply", IndexSequence(self.start + self.induction_var * self.tile_size, 1))
         return IndexSequence(self.start + self.induction_var * self.tile_size, 1)
 
     @property
