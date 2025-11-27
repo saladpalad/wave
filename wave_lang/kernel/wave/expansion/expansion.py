@@ -424,7 +424,7 @@ def add_get_results(trace: CapturedTrace):
             for subgraph in trace.region_graph.subgraphs.values():
                 for node in subgraph.nodes:
                     if node.meta.get("lifted", None) == iterate.fx_node:
-                            node.meta["lifted"] = get_result.fx_node
+                        node.meta["lifted"] = get_result.fx_node
 
 
 def populate_inputs(
@@ -705,12 +705,20 @@ def fixup_iterate_nodes(
     """
     iterate_context = expansion_context.iterate_context
     iterate_nodes = trace.walk(lambda x: isinstance(get_custom(x), Iterate))
+
+    # Collect nodes to erase - we delay erasing until after all iterates are processed
+    # to ensure cross-iterate references are established first
+    nodes_to_erase = []
+
     for iterate in reversed(iterate_nodes):
         iterate = get_custom(iterate)
         reduction_subgraph = trace.get_subgraph(iterate.subgraph_name)
         output = get_custom(get_last(reduction_subgraph.nodes))
         # Skip if all return values are None or empty (e.g., while loops with no outputs)
-        if all(x is None or (isinstance(x, Sequence) and len(x) == 0) for x in output.return_vals):
+        if all(
+            x is None or (isinstance(x, Sequence) and len(x) == 0)
+            for x in output.return_vals
+        ):
             continue
         return_vals = output.return_vals[0]
         if isinstance(return_vals, Sequence):
@@ -737,6 +745,10 @@ def fixup_iterate_nodes(
         iterate.update_arg("init_args", new_init_args)
 
         for result_index, get_item in iterate_info.get_results.items():
+            # Check if get_item has users BEFORE we replace
+            had_users_before = len(get_item.fx_node.users) > 0
+            users_before = list(get_item.fx_node.users)
+
             get_item.graph.inserting_before(get_item.fx_node)
             get_result = GetResult(get_item.value, result_index).add_to_graph(
                 get_item.graph, get_item.type, loc=get_item.location
@@ -745,9 +757,17 @@ def fixup_iterate_nodes(
             get_result.index = get_item.index
             get_result = get_custom(get_result)
             get_item.replace_all_uses_with(get_result)
-            get_item.erase()
+
+            # Collect all get_items - we'll decide whether to erase them after all iterates are processed
+            nodes_to_erase.append((get_item, had_users_before, users_before))
 
         remove_original_nodes(return_vals)
+
+    # Now erase get_items that have no users (delayed to ensure cross-iterate refs are set up)
+    for node, had_users_before, users_before in nodes_to_erase:
+        final_users = list(node.fx_node.users)
+        if not final_users:
+            node.erase()
 
     # For conditional nodes, update the condition to use the expanded nodes.
     for conditional in trace.walk(lambda x: isinstance(get_custom(x), Conditional)):
