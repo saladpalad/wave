@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional, Sequence, get_type_hints
 
 import sympy
 import torch.fx as fx
+from sympy import floor
 from sympy.utilities.lambdify import lambdastr
 
 from wave_lang.support.ir_imports import (
@@ -521,16 +522,77 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-        for wave_constraint in self.wave_constraints:
-            for workgroup_constraint in self.workgroup_constraints:
-                if wave_constraint.dim == workgroup_constraint.dim:
-                    wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                        hardware_constraint, workgroup_constraint
-                    )
+
+        # Check if we should use linearized wave layout.
+        # This is the case when all workgroup constraints with apply_fn share the same workgroup_dim.
+        # The user can override this by setting use_linearized_layout explicitly on HardwareConstraint:
+        #   - None (default): auto-detect based on constraints
+        #   - True: force linearized layout
+        #   - False: force 2D layout (original behavior)
+        wg_constraints_with_apply_fn = [
+            wg for wg in self.workgroup_constraints if wg.apply_fn is not None
+        ]
+
+        # Auto-detect linearized layout if not explicitly set
+        should_auto_linearize = len(wg_constraints_with_apply_fn) > 1 and all(
+            wg.workgroup_dim == wg_constraints_with_apply_fn[0].workgroup_dim
+            for wg in wg_constraints_with_apply_fn
+        )
+
+        # Determine actual use of linearized layout
+        if hardware_constraint.use_linearized_layout is None:
+            # Auto-detect
+            use_linearized_layout = should_auto_linearize
+        else:
+            # Use explicit setting
+            use_linearized_layout = hardware_constraint.use_linearized_layout
+
+        if use_linearized_layout:
+            # Calculate the waves per block for the primary dimension directly from tile sizes
+            # Find the primary constraint's waves_per_block by computing it from tile sizes
+            primary_waves_per_block = None
+            for wave_constraint in self.wave_constraints:
+                for wg_constraint in wg_constraints_with_apply_fn:
+                    if (
+                        wave_constraint.dim == wg_constraint.dim
+                        and wg_constraint.primary
+                    ):
+                        # Compute waves_per_block directly: wg_tile_size / wave_tile_size
+                        primary_waves_per_block = subs_idxc(
+                            sympy.ceiling(
+                                wg_constraint.tile_size / wave_constraint.tile_size
+                            )
+                        )
+                        break
+                if primary_waves_per_block is not None:
+                    break
+
+            # The linearized wave_id is floor(THREAD_0 / threads_per_wave)
+            linearized_wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+
+            # Set wave IDs using the linearized approach
+            for wave_constraint in self.wave_constraints:
+                for workgroup_constraint in self.workgroup_constraints:
+                    if wave_constraint.dim == workgroup_constraint.dim:
+                        wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
+                            hardware_constraint,
+                            workgroup_constraint,
+                            linearized_wave_id=linearized_wave_id,
+                            waves_per_block_for_dim=primary_waves_per_block,
+                        )
+        else:
+            # Original logic for non-linearized layout
+            for wave_constraint in self.wave_constraints:
+                for workgroup_constraint in self.workgroup_constraints:
+                    if wave_constraint.dim == workgroup_constraint.dim:
+                        wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
+                            hardware_constraint, workgroup_constraint
+                        )
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
             thread_dim_idx = 0
+
             for wave_constraint in self.wave_constraints:
                 count = subs_idxc(wave_constraint.waves_per_block)
                 wg_constraint = None
@@ -540,12 +602,26 @@ class LaunchableWave(Launchable):
                         break
 
                 if wg_constraint and wg_constraint.apply_fn is not None:
+                    # For both linearized and non-linearized, place wave counts in separate slots
+                    # This ensures correct expansion scaling per dimension
                     waves_per_block[thread_dim_idx] = count
                     thread_dim_idx += 1
+                elif (
+                    wg_constraint
+                    and wg_constraint.workgroup_dim == 0
+                    and not wg_constraint.primary
+                ):
+                    # Non-primary constraint sharing workgroup_dim=0: put in slot 1
+                    # This handles cases where multiple constraints share the same workgroup_dim
+                    waves_per_block[1] = count
                 else:
                     waves_per_block[wave_constraint.workgroup_dim] = count
 
             hardware_constraint.waves_per_block = tuple(waves_per_block)
+
+            # Mark for linearized layout if needed (affects threads_per_block computation)
+            if use_linearized_layout:
+                hardware_constraint.use_linearized_layout = True
 
     def initialize_reductions(self, trace: CapturedTrace) -> None:
         """

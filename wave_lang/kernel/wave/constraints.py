@@ -234,6 +234,8 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
+    # None = auto-detect, True = force linearized, False = force 2D
+    use_linearized_layout: Optional[bool] = None
 
     def max_elems_per_load(self, element_type: DataType) -> int:
         return self.max_bits_per_load // element_type.bitwidth()
@@ -450,6 +452,14 @@ class HardwareConstraint(Constraint):
     @property
     def threads_per_block(self) -> tuple[int]:
         # threads_per_block is set in initialize_wave_constraints method
+        if self.use_linearized_layout is True:
+            # For linearized layout, all waves are packed into the first dimension
+            total_waves = (
+                self.waves_per_block[0]
+                * self.waves_per_block[1]
+                * self.waves_per_block[2]
+            )
+            return (total_waves * self.threads_per_wave, 1, 1)
         return (
             self.waves_per_block[0] * self.threads_per_wave,
         ) + self.waves_per_block[1:]
@@ -820,6 +830,8 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
+        linearized_wave_id: Optional[IndexExpr] = None,
+        waves_per_block_for_dim: Optional[int] = None,
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
@@ -828,20 +840,34 @@ class WaveConstraint(DistributionConstraint):
 
         For persistent kernels with linearized grids (apply_fn on workgroup_dim=0),
         we use linearized thread IDs to distinguish waves across different dimensions.
+
+        When linearized_wave_id is provided, it means we're using a fully linearized
+        thread layout where all waves are packed into THREAD_0. In this case:
+        - The primary constraint gets wave_id = linearized_wave_id % waves_per_block_for_dim
+        - The non-primary constraint gets wave_id = linearized_wave_id // waves_per_block_for_dim
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
 
-        if (
+        if linearized_wave_id is not None and waves_per_block_for_dim is not None:
+            # Fully linearized layout: delinearize the wave_id
+            if workgroup_constraint.primary:
+                self.wave_id = linearized_wave_id % waves_per_block_for_dim
+            else:
+                self.wave_id = floor(linearized_wave_id / waves_per_block_for_dim)
+        elif (
+            workgroup_constraint.workgroup_dim == 0 and not workgroup_constraint.primary
+        ):
+            # Non-primary constraint sharing workgroup_dim=0: use THREAD_1 for wave_id
+            # This handles both apply_fn and non-apply_fn cases where multiple
+            # constraints share the same workgroup dimension
+            self.wave_id = THREAD_1
+        elif (
             workgroup_constraint.apply_fn is not None
             and workgroup_constraint.workgroup_dim == 0
         ):
-            # explicity use linearized thread ID to set wave_id,
-            # to separate the thread dimensions within in a wg, when the threads all use the same workgroup_dim
-            if workgroup_constraint.primary:
-                self.wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
-            else:
-                self.wave_id = THREAD_1
+            # Primary constraint with apply_fn on workgroup_dim=0
+            self.wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
         else:
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim

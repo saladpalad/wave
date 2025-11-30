@@ -54,6 +54,7 @@ from ..constraints import (
     HardwareConstraint,
     TilingConstraint,
     WorkgroupConstraint,
+    GridConstraint,
 )
 from ..symbolic_constraints import SymbolicAlias
 from ..utils.general_utils import (
@@ -363,6 +364,7 @@ def set_thread_independent_index(
         return
 
     constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
+    has_grid_constraint = any([c for c in constraints if isinstance(c, GridConstraint)])
 
     index = {}
     for dim in custom.indexing_dims:
@@ -376,6 +378,10 @@ def set_thread_independent_index(
             if isinstance(constraint, TilingConstraint):
                 if not hasattr(custom.graph, "parent_op"):
                     continue
+
+            # Don't apply workgroup constraint to indices if grid constraint is present
+            if isinstance(constraint, WorkgroupConstraint) and has_grid_constraint:
+                continue
 
             if index_seq is None:
                 index_seq = constraint.apply()
