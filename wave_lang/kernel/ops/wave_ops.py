@@ -1056,6 +1056,7 @@ class BinaryOpBase(CustomOp, ABC):
 @define_py_op(operator.or_)
 @define_py_op(operator.truediv)
 @define_py_op(operator.mod)
+@define_py_op(operator.floordiv)
 @define_interface_op("maximum")
 @define_interface_op("minimum")
 @define_interface_op("atan2")
