@@ -603,9 +603,22 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
     if mapping:
-        index = transform_index_on_mapping(mapping, input_shape, index, is_read=True)
-
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        transformed_index = transform_index_on_mapping(
+            mapping, input_shape, index, is_read=True
+        )
+        if bounds and all(dim in transformed_index for dim in bounds):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        index = transformed_index
+    else:
+        mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
@@ -674,9 +687,22 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
     if mapping:
-        index = transform_index_on_mapping(mapping, output_shape, index, is_read=False)
-
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        transformed_index = transform_index_on_mapping(
+            mapping, output_shape, index, is_read=False
+        )
+        if bounds and all(dim in transformed_index for dim in bounds):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        index = transformed_index
+    else:
+        mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
