@@ -598,9 +598,39 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     )
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
     if mapping:
-        index = transform_index_on_mapping(mapping, input_shape, index, is_read=True)
+        transformed_index = transform_index_on_mapping(
+            mapping, input_shape, index, is_read=True
+        )
+        has_dynamic_vals = bool(mapping.dynamic_val_indices)
+        # Check if memory dimensions are static (not set via set_symbol).
+        # For kernels like extend_attention, memory dims like N_Q are dynamically set,
+        # and we should NOT use transformed_index for masking in those cases.
+        memory_dims_are_static = not (
+            set(input_shape) & set(emitter.dynamic_dims.keys())
+        )
+        # Build mask w/ transformed_index based on the following conditions:
+        # - bounds exist and all bound dims are in transformed_index
+        # - no dynamic_val_indices in mapping
+        # - memory dimensions are not dynamically set (to exclude extend_attention pattern)
+        if (
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not mapping.dynamic_val_indices
+            and memory_dims_are_static
+        ):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        index = transformed_index
+    else:
+        mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
@@ -668,9 +698,40 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     )
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
     if mapping:
-        index = transform_index_on_mapping(mapping, output_shape, index, is_read=False)
+        transformed_index = transform_index_on_mapping(
+            mapping, output_shape, index, is_read=False
+        )
+        # For mappings with dynamic values (like offset writes), the mask should be
+        # built on the original index since bounds checking is about whether the
+        # thread should participate, not about the dynamic target location.
+        # For simple offset mappings (like persistent GEMM with no dynamic values),
+        # use transformed index if all bounds dimensions exist in it.
+        has_dynamic_vals = bool(mapping.dynamic_val_indices)
+        # Check if memory dimensions are static (not set via set_symbol).
+        # For kernels like extend_attention, memory dims like N_Q are dynamically set,
+        # and we should NOT use transformed_index for masking in those cases.
+        memory_dims_are_static = not (
+            set(output_shape) & set(emitter.dynamic_dims.keys())
+        )
+        if (
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not has_dynamic_vals
+            and memory_dims_are_static
+        ):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
+        index = transformed_index
+    else:
+        mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start

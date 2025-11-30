@@ -521,57 +521,42 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-
-        # Determine if we should use linearized layout
-        # use_linearized_layout on HardwareConstraint:
-        #   - None (default) or False: use standard 2D layout
-        #   - True: force linearized layout (all waves packed into THREAD_0)
         use_linearized_layout = hardware_constraint.use_linearized_layout is True
 
         if use_linearized_layout:
-            # For linearized layout, find the primary constraint and compute waves_per_block
-            # The primary constraint is either:
-            # 1. Explicitly marked with primary=True, or
-            # 2. The first constraint with workgroup_dim=0
             primary_waves_per_block = None
             primary_wg_constraint = None
 
-            # First, check if any constraint is explicitly marked as primary
             for wg_constraint in self.workgroup_constraints:
                 if wg_constraint.primary is True:
                     primary_wg_constraint = wg_constraint
                     break
 
-            # If no explicit primary, use first constraint with workgroup_dim=0
-            if primary_wg_constraint is None:
-                for wg_constraint in self.workgroup_constraints:
-                    if wg_constraint.workgroup_dim == 0:
-                        primary_wg_constraint = wg_constraint
-                        wg_constraint.primary = True
-                        break
+            for wg_constraint in self.workgroup_constraints:
+                if wg_constraint.primary is True:
+                    primary_wg_constraint = wg_constraint
+                    break
+                # Assume primary is workgroup_dim = 0 (if not explicity set)
+                if primary_wg_constraint is None and wg_constraint.workgroup_dim == 0:
+                    primary_wg_constraint = wg_constraint
+                    wg_constraint.primary = True
 
-            # Compute waves_per_block for the primary constraint
+            # Only compute waves_per_block for the primary constraint
             if primary_wg_constraint is not None:
                 for wave_constraint in self.wave_constraints:
                     if wave_constraint.dim == primary_wg_constraint.dim:
                         primary_waves_per_block = subs_idxc(
                             sympy.ceiling(
-                                primary_wg_constraint.tile_size / wave_constraint.tile_size
+                                primary_wg_constraint.tile_size
+                                / wave_constraint.tile_size
                             )
                         )
                         break
 
-            # Mark all other constraints as non-primary
-            for wg_constraint in self.workgroup_constraints:
-                if wg_constraint is not primary_wg_constraint:
-                    wg_constraint.primary = False
-
-            # The linearized wave_id is floor(THREAD_0 / threads_per_wave)
             linearized_wave_id = sympy.floor(
                 THREAD_0 / hardware_constraint.threads_per_wave
             )
 
-            # Set wave IDs using the linearized approach
             for wave_constraint in self.wave_constraints:
                 for workgroup_constraint in self.workgroup_constraints:
                     if wave_constraint.dim == workgroup_constraint.dim:
@@ -582,7 +567,6 @@ class LaunchableWave(Launchable):
                             waves_per_block_for_dim=primary_waves_per_block,
                         )
         else:
-            # Standard logic for non-linearized layout
             for wave_constraint in self.wave_constraints:
                 for workgroup_constraint in self.workgroup_constraints:
                     if wave_constraint.dim == workgroup_constraint.dim:
@@ -594,13 +578,11 @@ class LaunchableWave(Launchable):
             waves_per_block = [1, 1, 1]
 
             if use_linearized_layout:
-                # For linearized layout, place wave counts in separate slots
-                # regardless of workgroup_dim, to ensure correct total wave count
-                slot_idx = 0
+                idx = 0
                 for wave_constraint in self.wave_constraints:
                     count = subs_idxc(wave_constraint.waves_per_block)
-                    waves_per_block[slot_idx] = count
-                    slot_idx += 1
+                    waves_per_block[idx] = count
+                    idx += 1
             else:
                 for wave_constraint in self.wave_constraints:
                     count = subs_idxc(wave_constraint.waves_per_block)

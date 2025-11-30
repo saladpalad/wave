@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Callable, Optional, Sequence
 
 import sympy
-from sympy.core.sorting import default_sort_key
 import torch.fx as fx
 
 import wave_lang.kernel.lang as tkl
@@ -365,9 +364,7 @@ def set_thread_independent_index(
     if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
         return
 
-    # has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
-    has_grid_constraint = any([c for c in constraints if isinstance(c, GridConstraint)])
-
+    has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
     constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
 
     index = {}
@@ -1050,8 +1047,7 @@ def resolve_broadcasting_for_op(custom: CustomOp, operand_identifiers: list[str]
             BroadcastOperand(custom=operand_custom, dim=dim, size=size, id=identifier)
         )
 
-    # Use default_sort_key for symbolic expressions to avoid comparison errors
-    target = max(operands, key=lambda x: default_sort_key(x.size))
+    target = max(operands, key=lambda x: x.size)
 
     def generate_error_context():
         context_lines = [f"\n{type(custom).__name__.lower()}={custom}"]

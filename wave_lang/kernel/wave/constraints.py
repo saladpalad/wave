@@ -453,7 +453,6 @@ class HardwareConstraint(Constraint):
     def threads_per_block(self) -> tuple[int]:
         # threads_per_block is set in initialize_wave_constraints method
         if self.use_linearized_layout is True:
-            # For linearized layout, all waves are packed into the first dimension
             total_waves = (
                 self.waves_per_block[0]
                 * self.waves_per_block[1]
@@ -838,8 +837,8 @@ class WaveConstraint(DistributionConstraint):
           wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
 
-        When linearized_wave_id is provided, it means we're using a fully linearized
-        thread layout where all waves are packed into THREAD_0. In this case:
+        When linearized_wave_id is provided, it means all waves are linearized along THREAD_0 dim.
+        This is the convention:
         - The primary constraint gets wave_id = linearized_wave_id % waves_per_block_for_dim
         - The non-primary constraint gets wave_id = linearized_wave_id // waves_per_block_for_dim
         """
@@ -847,13 +846,11 @@ class WaveConstraint(DistributionConstraint):
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
 
         if linearized_wave_id is not None and waves_per_block_for_dim is not None:
-            # Fully linearized layout: delinearize the wave_id
             if workgroup_constraint.primary:
                 self.wave_id = linearized_wave_id % waves_per_block_for_dim
             else:
                 self.wave_id = floor(linearized_wave_id / waves_per_block_for_dim)
         else:
-            # Standard case: use thread ID from workgroup dimension
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim
             )
