@@ -838,9 +838,6 @@ class WaveConstraint(DistributionConstraint):
           wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
 
-        For persistent kernels with linearized grids (apply_fn on workgroup_dim=0),
-        we use linearized thread IDs to distinguish waves across different dimensions.
-
         When linearized_wave_id is provided, it means we're using a fully linearized
         thread layout where all waves are packed into THREAD_0. In this case:
         - The primary constraint gets wave_id = linearized_wave_id % waves_per_block_for_dim
@@ -855,17 +852,8 @@ class WaveConstraint(DistributionConstraint):
                 self.wave_id = linearized_wave_id % waves_per_block_for_dim
             else:
                 self.wave_id = floor(linearized_wave_id / waves_per_block_for_dim)
-        elif (
-            workgroup_constraint.apply_fn is not None
-            and workgroup_constraint.workgroup_dim == 0
-        ):
-            # explicity use linearized thread ID to set wave_id,
-            # to separate the thread dimensions within in a wg, when the threads all use the same workgroup_dim
-            if workgroup_constraint.primary:
-                self.wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
-            else:
-                self.wave_id = THREAD_1
         else:
+            # Standard case: use thread ID from workgroup dimension
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim
             )

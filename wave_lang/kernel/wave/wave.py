@@ -522,77 +522,49 @@ class LaunchableWave(Launchable):
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
 
-        # Check if we should use linearized wave layout.
-        # This is the case when all workgroup constraints with apply_fn share the same workgroup_dim.
-        # The user can override this by setting use_linearized_layout explicitly on HardwareConstraint:
-        #   - None (default): auto-detect based on constraints
-        #   - True: force linearized layout
-        #   - False: force 2D layout (original behavior)
-        wg_constraints_with_apply_fn = [
-            wg for wg in self.workgroup_constraints if wg.apply_fn is not None
-        ]
-
-        # Auto-detect linearized layout if not explicitly set
-        should_auto_linearize = len(wg_constraints_with_apply_fn) > 1 and all(
-            wg.workgroup_dim == wg_constraints_with_apply_fn[0].workgroup_dim
-            for wg in wg_constraints_with_apply_fn
-        )
-
-        # Determine actual use of linearized layout
-        if hardware_constraint.use_linearized_layout is None:
-            # Auto-detect
-            use_linearized_layout = should_auto_linearize
-        else:
-            # Use explicit setting
-            use_linearized_layout = hardware_constraint.use_linearized_layout
+        # Determine if we should use linearized layout
+        # use_linearized_layout on HardwareConstraint:
+        #   - None (default) or False: use standard 2D layout
+        #   - True: force linearized layout (all waves packed into THREAD_0)
+        use_linearized_layout = hardware_constraint.use_linearized_layout is True
 
         if use_linearized_layout:
-            # Calculate the waves per block for the primary dimension directly from tile sizes
-            # Find the primary constraint's waves_per_block by computing it from tile sizes
+            # For linearized layout, find the primary constraint and compute waves_per_block
+            # The primary constraint is either:
+            # 1. Explicitly marked with primary=True, or
+            # 2. The first constraint with workgroup_dim=0
             primary_waves_per_block = None
-            for wave_constraint in self.wave_constraints:
-                for wg_constraint in wg_constraints_with_apply_fn:
-                    if (
-                        wave_constraint.dim == wg_constraint.dim
-                        and wg_constraint.primary
-                    ):
-                        # Compute waves_per_block directly: wg_tile_size / wave_tile_size
+            primary_wg_constraint = None
+
+            # First, check if any constraint is explicitly marked as primary
+            for wg_constraint in self.workgroup_constraints:
+                if wg_constraint.primary is True:
+                    primary_wg_constraint = wg_constraint
+                    break
+
+            # If no explicit primary, use first constraint with workgroup_dim=0
+            if primary_wg_constraint is None:
+                for wg_constraint in self.workgroup_constraints:
+                    if wg_constraint.workgroup_dim == 0:
+                        primary_wg_constraint = wg_constraint
+                        wg_constraint.primary = True
+                        break
+
+            # Compute waves_per_block for the primary constraint
+            if primary_wg_constraint is not None:
+                for wave_constraint in self.wave_constraints:
+                    if wave_constraint.dim == primary_wg_constraint.dim:
                         primary_waves_per_block = subs_idxc(
                             sympy.ceiling(
-                                wg_constraint.tile_size / wave_constraint.tile_size
+                                primary_wg_constraint.tile_size / wave_constraint.tile_size
                             )
                         )
                         break
-                if primary_waves_per_block is not None:
-                    break
 
-            # If no apply_fn constraints, use regular workgroup constraints
-            # In this case, treat workgroup_dim=0 as primary
-            if (
-                primary_waves_per_block is None
-                and len(wg_constraints_with_apply_fn) == 0
-            ):
-                for wave_constraint in self.wave_constraints:
-                    for wg_constraint in self.workgroup_constraints:
-                        if (
-                            wave_constraint.dim == wg_constraint.dim
-                            and wg_constraint.workgroup_dim == 0
-                        ):
-                            primary_waves_per_block = subs_idxc(
-                                sympy.ceiling(
-                                    wg_constraint.tile_size / wave_constraint.tile_size
-                                )
-                            )
-                            # Mark this constraint as primary for the linearized logic
-                            wg_constraint.primary = True
-                            break
-                    if primary_waves_per_block is not None:
-                        break
-
-                # Mark other constraints as non-primary
-                for wg_constraint in self.workgroup_constraints:
-                    if wg_constraint.workgroup_dim != 0:
-                        wg_constraint.primary = False
+            # Mark all other constraints as non-primary
+            for wg_constraint in self.workgroup_constraints:
+                if wg_constraint is not primary_wg_constraint:
+                    wg_constraint.primary = False
 
             # The linearized wave_id is floor(THREAD_0 / threads_per_wave)
             linearized_wave_id = sympy.floor(
@@ -610,7 +582,7 @@ class LaunchableWave(Launchable):
                             waves_per_block_for_dim=primary_waves_per_block,
                         )
         else:
-            # Original logic for non-linearized layout
+            # Standard logic for non-linearized layout
             for wave_constraint in self.wave_constraints:
                 for workgroup_constraint in self.workgroup_constraints:
                     if wave_constraint.dim == workgroup_constraint.dim:
@@ -620,29 +592,21 @@ class LaunchableWave(Launchable):
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
-            thread_dim_idx = 0
 
-            for wave_constraint in self.wave_constraints:
-                count = subs_idxc(wave_constraint.waves_per_block)
-                wg_constraint = None
-                for wg in self.workgroup_constraints:
-                    if wg.dim == wave_constraint.dim:
-                        wg_constraint = wg
-                        break
-
-                if wg_constraint and wg_constraint.apply_fn is not None:
-                    # For both linearized and non-linearized, place wave counts in separate slots
-                    # This ensures correct expansion scaling per dimension
-                    waves_per_block[thread_dim_idx] = count
-                    thread_dim_idx += 1
-                else:
+            if use_linearized_layout:
+                # For linearized layout, place wave counts in separate slots
+                # regardless of workgroup_dim, to ensure correct total wave count
+                slot_idx = 0
+                for wave_constraint in self.wave_constraints:
+                    count = subs_idxc(wave_constraint.waves_per_block)
+                    waves_per_block[slot_idx] = count
+                    slot_idx += 1
+            else:
+                for wave_constraint in self.wave_constraints:
+                    count = subs_idxc(wave_constraint.waves_per_block)
                     waves_per_block[wave_constraint.workgroup_dim] = count
 
             hardware_constraint.waves_per_block = tuple(waves_per_block)
-
-            # Mark for linearized layout if needed (affects threads_per_block computation)
-            if use_linearized_layout:
-                hardware_constraint.use_linearized_layout = True
 
     def initialize_reductions(self, trace: CapturedTrace) -> None:
         """
