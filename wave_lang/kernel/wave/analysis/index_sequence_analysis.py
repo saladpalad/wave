@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Callable, Optional, Sequence
 
 import sympy
+from sympy.core.sorting import default_sort_key
 import torch.fx as fx
 
 import wave_lang.kernel.lang as tkl
@@ -51,10 +52,10 @@ from ...ops.wave_ops import (
 from ..constraints import (
     Constraint,
     DistributionConstraint,
+    GridConstraint,
     HardwareConstraint,
     TilingConstraint,
     WorkgroupConstraint,
-    GridConstraint,
 )
 from ..symbolic_constraints import SymbolicAlias
 from ..utils.general_utils import (
@@ -255,6 +256,7 @@ def verify_nodes(trace: CapturedTrace, constraints: list[Constraint]):
                 custom.vector_shapes = {}
                 for dim in update_vector_shapes:
                     custom.vector_shapes[dim] = hw_constraint.vector_shapes[dim]
+        # breakpoint()
         assert (
             custom.vector_shapes
         ), f"Vector shapes not set for node {custom.fx_node}: {custom}"
@@ -363,8 +365,10 @@ def set_thread_independent_index(
     if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
         return
 
-    constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
+    # has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
     has_grid_constraint = any([c for c in constraints if isinstance(c, GridConstraint)])
+
+    constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
 
     index = {}
     for dim in custom.indexing_dims:
@@ -379,7 +383,6 @@ def set_thread_independent_index(
                 if not hasattr(custom.graph, "parent_op"):
                     continue
 
-            # Don't apply workgroup constraint to indices if grid constraint is present
             if isinstance(constraint, WorkgroupConstraint) and has_grid_constraint:
                 continue
 
@@ -1047,7 +1050,8 @@ def resolve_broadcasting_for_op(custom: CustomOp, operand_identifiers: list[str]
             BroadcastOperand(custom=operand_custom, dim=dim, size=size, id=identifier)
         )
 
-    target = max(operands, key=lambda x: x.size)
+    # Use default_sort_key for symbolic expressions to avoid comparison errors
+    target = max(operands, key=lambda x: default_sort_key(x.size))
 
     def generate_error_context():
         context_lines = [f"\n{type(custom).__name__.lower()}={custom}"]

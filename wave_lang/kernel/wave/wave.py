@@ -15,7 +15,6 @@ from typing import Any, Callable, Optional, Sequence, get_type_hints
 
 import sympy
 import torch.fx as fx
-from sympy import floor
 from sympy.utilities.lambdify import lambdastr
 
 from wave_lang.support.ir_imports import (
@@ -567,8 +566,38 @@ class LaunchableWave(Launchable):
                 if primary_waves_per_block is not None:
                     break
 
+            # If no apply_fn constraints, use regular workgroup constraints
+            # In this case, treat workgroup_dim=0 as primary
+            if (
+                primary_waves_per_block is None
+                and len(wg_constraints_with_apply_fn) == 0
+            ):
+                for wave_constraint in self.wave_constraints:
+                    for wg_constraint in self.workgroup_constraints:
+                        if (
+                            wave_constraint.dim == wg_constraint.dim
+                            and wg_constraint.workgroup_dim == 0
+                        ):
+                            primary_waves_per_block = subs_idxc(
+                                sympy.ceiling(
+                                    wg_constraint.tile_size / wave_constraint.tile_size
+                                )
+                            )
+                            # Mark this constraint as primary for the linearized logic
+                            wg_constraint.primary = True
+                            break
+                    if primary_waves_per_block is not None:
+                        break
+
+                # Mark other constraints as non-primary
+                for wg_constraint in self.workgroup_constraints:
+                    if wg_constraint.workgroup_dim != 0:
+                        wg_constraint.primary = False
+
             # The linearized wave_id is floor(THREAD_0 / threads_per_wave)
-            linearized_wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+            linearized_wave_id = sympy.floor(
+                THREAD_0 / hardware_constraint.threads_per_wave
+            )
 
             # Set wave IDs using the linearized approach
             for wave_constraint in self.wave_constraints:
@@ -606,14 +635,6 @@ class LaunchableWave(Launchable):
                     # This ensures correct expansion scaling per dimension
                     waves_per_block[thread_dim_idx] = count
                     thread_dim_idx += 1
-                elif (
-                    wg_constraint
-                    and wg_constraint.workgroup_dim == 0
-                    and not wg_constraint.primary
-                ):
-                    # Non-primary constraint sharing workgroup_dim=0: put in slot 1
-                    # This handles cases where multiple constraints share the same workgroup_dim
-                    waves_per_block[1] = count
                 else:
                     waves_per_block[wave_constraint.workgroup_dim] = count
 

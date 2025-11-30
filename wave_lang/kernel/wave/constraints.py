@@ -760,7 +760,7 @@ class TilingConstraint(DistributionConstraint):
     def apply(self) -> IndexSequence:
         if self.induction_var is None:
             raise ValueError(
-                "Index is being computed without setting induction variable"
+                f"Index is being computed without setting induction variable for dimension {self.dim}"
             )
         return IndexSequence(self.start + self.induction_var * self.tile_size, 1)
 
@@ -856,18 +856,15 @@ class WaveConstraint(DistributionConstraint):
             else:
                 self.wave_id = floor(linearized_wave_id / waves_per_block_for_dim)
         elif (
-            workgroup_constraint.workgroup_dim == 0 and not workgroup_constraint.primary
-        ):
-            # Non-primary constraint sharing workgroup_dim=0: use THREAD_1 for wave_id
-            # This handles both apply_fn and non-apply_fn cases where multiple
-            # constraints share the same workgroup dimension
-            self.wave_id = THREAD_1
-        elif (
             workgroup_constraint.apply_fn is not None
             and workgroup_constraint.workgroup_dim == 0
         ):
-            # Primary constraint with apply_fn on workgroup_dim=0
-            self.wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+            # explicity use linearized thread ID to set wave_id,
+            # to separate the thread dimensions within in a wg, when the threads all use the same workgroup_dim
+            if workgroup_constraint.primary:
+                self.wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+            else:
+                self.wave_id = THREAD_1
         else:
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim
