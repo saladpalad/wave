@@ -363,9 +363,7 @@ def set_thread_independent_index(
     if isinstance(custom, (Iterate, Placeholder)) and not isinstance(custom, IterArg):
         return
 
-    # has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
-    has_grid_constraint = any([c for c in constraints if isinstance(c, GridConstraint)])
-
+    has_grid_constraint = any(isinstance(c, GridConstraint) for c in constraints)
     constraints = [c for c in constraints if isinstance(c, DistributionConstraint)]
 
     index = {}
