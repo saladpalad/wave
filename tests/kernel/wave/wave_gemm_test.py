@@ -2742,8 +2742,8 @@ def test_persistent_gemm(
 
     constraints = [
         tkw.GridConstraint(NUM_CTAS),
-        tkw.WorkgroupConstraint(M, BLOCK_M, 0),
-        tkw.WorkgroupConstraint(N, BLOCK_N, 0, primary=False),
+        tkw.WorkgroupConstraint(M, BLOCK_M, 0, primary=False),
+        tkw.WorkgroupConstraint(N, BLOCK_N, 0),
         tkw.TilingConstraint(K, BLOCK_K),
         tkw.TilingConstraint(TILE_IDX),
         tkw.WaveConstraint(M, BLOCK_M / 2),

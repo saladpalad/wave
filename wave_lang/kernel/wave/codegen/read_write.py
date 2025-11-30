@@ -602,9 +602,10 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     )
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
     if mapping:
         index = transform_index_on_mapping(mapping, input_shape, index, is_read=True)
+
+    mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
@@ -672,9 +673,10 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     )
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
 
-    mask = _build_mask(emitter, index, elements_per_thread, bounds)
     if mapping:
         index = transform_index_on_mapping(mapping, output_shape, index, is_read=False)
+
+    mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start

@@ -549,11 +549,6 @@ class LaunchableWave(Launchable):
                         )
                         break
 
-            # Mark all other constraints as non-primary
-            for wg_constraint in self.workgroup_constraints:
-                if wg_constraint is not primary_wg_constraint:
-                    wg_constraint.primary = False
-
             linearized_wave_id = sympy.floor(
                 THREAD_0 / hardware_constraint.threads_per_wave
             )
