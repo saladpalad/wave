@@ -1391,6 +1391,21 @@ class IterArg(Placeholder):
         self.fx_node.iter_idx = value
 
     @property
+    def original_iter_idx(self):
+        """
+        Returns the original iter_idx before expansion.
+        This is used for GET_ITER_ARG(i) which uses original indices.
+        """
+        if hasattr(self.fx_node, "original_iter_idx"):
+            return self.fx_node.original_iter_idx
+        # If not set, fall back to iter_idx (for non-expanded cases)
+        return self.iter_idx
+
+    @original_iter_idx.setter
+    def original_iter_idx(self, value):
+        self.fx_node.original_iter_idx = value
+
+    @property
     def distributed_shape(self):
         init_arg = self.parent_op().init_args[self.iter_idx]
         allocate = get_custom(init_arg)

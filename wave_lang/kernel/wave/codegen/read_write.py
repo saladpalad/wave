@@ -665,6 +665,10 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)
 
+    # Build mask from (potentially transformed) index - this ensures bounds check
+    # uses memory indices when IndexMapping with offsets is used
+    mask = _build_mask(emitter, index, elements_per_thread, bounds, dynamic_vals_map_start)
+
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
     )
@@ -781,6 +785,10 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         index = transformed_index
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)
+
+    # Build mask from (potentially transformed) index - this ensures bounds check
+    # uses memory indices when IndexMapping with offsets is used
+    mask = _build_mask(emitter, index, elements_per_thread, bounds, dynamic_vals_map_start)
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start

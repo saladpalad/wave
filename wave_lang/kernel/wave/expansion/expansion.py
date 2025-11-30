@@ -85,6 +85,16 @@ class ItertionInfo:
         self.outputs: dict[int, ExpansionInfo] = {}
         self.init_args: dict[int, ExpansionInfo] = {}
         self.get_results: dict[int, CustomOp] = {}
+        # Store the maximum dim_scaling seen for this iterate.
+        # This is needed to correctly compute global offsets when processing
+        # mixed-shape outputs (e.g., Register[M,N] + scalar i32).
+        self.max_dim_scaling: dict[IndexSymbol, int] = {}
+
+    def update_max_dim_scaling(self, dim_scaling: dict[IndexSymbol, int]):
+        """Update max_dim_scaling with any new/larger dimensions from dim_scaling."""
+        for dim, scale in dim_scaling.items():
+            if dim not in self.max_dim_scaling or scale > self.max_dim_scaling[dim]:
+                self.max_dim_scaling[dim] = scale
 
     def __repr__(self):
         get_results = {i: c.fx_node for i, c in self.get_results.items()}
@@ -254,12 +264,18 @@ def handle_iterate_entry(
             outputs = [outputs]
         if iterate not in iterate_context:
             iterate_context[iterate] = ItertionInfo(iterate)
+        iterate_info = iterate_context[iterate]
+        # Update the max dim_scaling for this iterate to handle mixed-shape outputs.
+        # This ensures we can correctly compute global offsets even when processing
+        # scalar outputs (which have empty dim_scaling).
+        iterate_info.update_max_dim_scaling(dim_scaling)
+        # Use the max_dim_scaling for computing result indices to handle
+        # mixed-shape outputs correctly (e.g., Register[M,N] + scalar i32).
         result_index = compute_result_index(
-            dim_query, dim_scaling, inputs[0], outputs, new_node.res_idx
+            dim_query, iterate_info.max_dim_scaling, inputs[0], outputs, new_node.res_idx
         )
         custom = get_custom(inputs[0])
         key = ExpansionInfo(custom, get_indexed_dims(dim_query, custom))
-        iterate_info = iterate_context[iterate]
         assert (
             result_index not in iterate_info.outputs
             and result_index not in iterate_info.get_results
@@ -282,14 +298,22 @@ def handle_iterate_exit(
     if isinstance(new_node, IterArg):
         assert len(inputs) == 1, f"Expected one input, got {inputs}"
         iterate = new_node.parent_op()
-        result_index = compute_result_index(
-            dim_query, dim_scaling, inputs[0], iterate.init_args, new_node.iter_idx
-        )
         assert iterate in iterate_context, f"Iterate not found: {iterate}"
+        iterate_info = iterate_context[iterate]
+        # Update the max dim_scaling and use it for computing result indices
+        # to handle mixed-shape init_args correctly.
+        iterate_info.update_max_dim_scaling(dim_scaling)
+        # Save the original iter_idx before expansion modifies it.
+        # This is needed for GET_ITER_ARG(i) which uses original indices.
+        original_idx = new_node.iter_idx
+        result_index = compute_result_index(
+            dim_query, iterate_info.max_dim_scaling, inputs[0], iterate.init_args, original_idx
+        )
         new_node.iter_idx = result_index
+        new_node.original_iter_idx = original_idx
         custom = get_custom(inputs[0])
         key = ExpansionInfo(custom, get_indexed_dims(dim_query, custom))
-        iterate_context[iterate].init_args[result_index] = key
+        iterate_info.init_args[result_index] = key
 
 
 def concatenate_outputs(
