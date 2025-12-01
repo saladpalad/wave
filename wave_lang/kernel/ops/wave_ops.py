@@ -560,7 +560,7 @@ def define_interface_op(op_name: str) -> Callable[[T], T]:
 def get_custom(node: fx.Node) -> "CustomOp":
     """Get the corresponding CustomOp for a given fx.Node."""
     if not isinstance(node, fx.Node):
-        #breakpoint()
+        # breakpoint()
         raise ValueError(f"Expected an fx.Node but got {type(node)}")
 
     # If the node was created as a CustomOp it has a corresponding field
@@ -2101,7 +2101,7 @@ class NestedRegionOp(CustomOp):
         return captured_vars
 
     def get_outer_node(self, outer_node: fx.Node) -> fx.Node:
-#        breakpoint()
+        #        breakpoint()
         while "lifted" in outer_node.meta:
             outer_node = outer_node.meta["lifted"]
         return outer_node
@@ -2110,7 +2110,7 @@ class NestedRegionOp(CustomOp):
         self, graph: fx.Graph, outer_node: fx.Node
     ) -> Optional[fx.Node]:
         outer_node = self.get_outer_node(outer_node)
-#        breakpoint()
+        #        breakpoint()
         for var in self.captured_vars(graph):
             custom = get_custom(var)
             if custom.get_captured_fx_node() == outer_node:
@@ -2241,7 +2241,9 @@ class Iterate(NestedRegionOp):
         if not isinstance(return_vals, Sequence):
             return_vals = [return_vals]
         # Handle empty return values (e.g., while loops with no outputs) fixes bug
-        if not return_vals or all(x is None or (isinstance(x, Sequence) and len(x) == 0) for x in return_vals):
+        if not return_vals or all(
+            x is None or (isinstance(x, Sequence) and len(x) == 0) for x in return_vals
+        ):
             return []
         for return_val in return_vals:
             return_dims = get_custom(return_val).indexing_dims

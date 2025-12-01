@@ -272,7 +272,11 @@ def handle_iterate_entry(
         # Use the max_dim_scaling for computing result indices to handle
         # mixed-shape outputs correctly (e.g., Register[M,N] + scalar i32).
         result_index = compute_result_index(
-            dim_query, iterate_info.max_dim_scaling, inputs[0], outputs, new_node.res_idx
+            dim_query,
+            iterate_info.max_dim_scaling,
+            inputs[0],
+            outputs,
+            new_node.res_idx,
         )
         custom = get_custom(inputs[0])
         key = ExpansionInfo(custom, get_indexed_dims(dim_query, custom))
@@ -307,7 +311,11 @@ def handle_iterate_exit(
         # This is needed for GET_ITER_ARG(i) which uses original indices.
         original_idx = new_node.iter_idx
         result_index = compute_result_index(
-            dim_query, iterate_info.max_dim_scaling, inputs[0], iterate.init_args, original_idx
+            dim_query,
+            iterate_info.max_dim_scaling,
+            inputs[0],
+            iterate.init_args,
+            original_idx,
         )
         new_node.iter_idx = result_index
         new_node.original_iter_idx = original_idx
