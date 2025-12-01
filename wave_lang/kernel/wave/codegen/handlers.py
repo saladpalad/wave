@@ -1554,7 +1554,10 @@ def add_iter_arg_subs(
             if i >= len(current_values) - 1:
                 break
             custom = get_custom(arg)
-            if hasattr(custom, 'original_iter_idx') and custom.original_iter_idx is not None:
+            if (
+                hasattr(custom, "original_iter_idx")
+                and custom.original_iter_idx is not None
+            ):
                 orig_idx = custom.original_iter_idx
                 # Only record the first occurrence (smallest expanded index)
                 if orig_idx not in original_to_first_expanded:
@@ -1564,9 +1567,13 @@ def add_iter_arg_subs(
         for orig_idx, expanded_idx in original_to_first_expanded.items():
             value = current_values[expanded_idx]
             if isinstance(value.type, VectorType):
-                assert value.type.rank == 1, f"Expected vector of rank 1, got {value.type}"
+                assert (
+                    value.type.rank == 1
+                ), f"Expected vector of rank 1, got {value.type}"
                 value = vector_d.extract(
-                    current_values[expanded_idx], static_position=[0], dynamic_position=[]
+                    current_values[expanded_idx],
+                    static_position=[0],
+                    dynamic_position=[],
                 )
             if isinstance(value.type, IntegerType):
                 value = arith_d.index_cast(IndexType.get(), value)
@@ -1576,7 +1583,9 @@ def add_iter_arg_subs(
         for i in range(len(current_values) - 1):
             value = current_values[i]
             if isinstance(value.type, VectorType):
-                assert value.type.rank == 1, f"Expected vector of rank 1, got {value.type}"
+                assert (
+                    value.type.rank == 1
+                ), f"Expected vector of rank 1, got {value.type}"
                 value = vector_d.extract(
                     current_values[i], static_position=[0], dynamic_position=[]
                 )

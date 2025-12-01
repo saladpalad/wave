@@ -627,7 +627,7 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 
     # Check if this is a volatile load
     custom = get_custom(node)
-    is_volatile = custom.volatile if hasattr(custom, 'volatile') else False
+    is_volatile = custom.volatile if hasattr(custom, "volatile") else False
 
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
     # memory has no IR node yet.
@@ -667,7 +667,9 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 
     # Build mask from (potentially transformed) index - this ensures bounds check
     # uses memory indices when IndexMapping with offsets is used
-    mask = _build_mask(emitter, index, elements_per_thread, bounds, dynamic_vals_map_start)
+    mask = _build_mask(
+        emitter, index, elements_per_thread, bounds, dynamic_vals_map_start
+    )
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
@@ -788,7 +790,9 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
 
     # Build mask from (potentially transformed) index - this ensures bounds check
     # uses memory indices when IndexMapping with offsets is used
-    mask = _build_mask(emitter, index, elements_per_thread, bounds, dynamic_vals_map_start)
+    mask = _build_mask(
+        emitter, index, elements_per_thread, bounds, dynamic_vals_map_start
+    )
 
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
