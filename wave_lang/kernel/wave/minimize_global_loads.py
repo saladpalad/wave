@@ -238,9 +238,13 @@ def add_optimized_nodes(
             assert len(expanded_dynamic_vals) == expected_number_of_loads
         for i in range(expected_number_of_loads):
             with custom.graph.inserting_before(custom.fx_node):
-                read = Read(memory, load_elems_per_thread, custom.mapping).add_to_graph(
-                    custom.graph, loc=custom.location, tag=custom.tag
-                )
+                read = Read(
+                    memory,
+                    load_elems_per_thread,
+                    custom.mapping,
+                    volatile=custom.volatile,
+                    cache_modifier=custom.cache_modifier,
+                ).add_to_graph(custom.graph, loc=custom.location, tag=custom.tag)
                 read.pre_expansion_id = custom.pre_expansion_id
                 read.vector_shapes = custom.vector_shapes
                 global_offset = (

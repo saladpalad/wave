@@ -625,9 +625,15 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
-    # Check if this is a volatile load
+    # Check if this is a volatile load or has cache modifiers
     custom = get_custom(node)
     is_volatile = custom.volatile if hasattr(custom, "volatile") else False
+    cache_modifier = (
+        custom.cache_modifier if hasattr(custom, "cache_modifier") else None
+    )
+    # .cv (coherent-volatile) implies volatile behavior
+    if cache_modifier == ".cv":
+        is_volatile = True
 
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
     # memory has no IR node yet.
@@ -706,8 +712,11 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
 
-        # Perform volatile load
-        result = llvm_d.LoadOp(vector_type, llvm_ptr, volatile_=True).result
+        # Perform volatile load with nontemporal hint to bypass L1 cache
+        # This is equivalent to Triton's .cv (coherent-volatile) modifier
+        result = llvm_d.LoadOp(
+            vector_type, llvm_ptr, volatile_=True, nontemporal=True
+        ).result
     elif read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
@@ -746,11 +755,24 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
+    # Check if this is a volatile store or has cache modifiers
+    custom = get_custom(node)
+    is_volatile = custom.volatile if hasattr(custom, "volatile") else False
+    cache_modifier = (
+        custom.cache_modifier if hasattr(custom, "cache_modifier") else None
+    )
+    # .wt (write-through) needs special handling to bypass L1 cache
+    use_nontemporal = cache_modifier == ".wt"
+    # .wt also implies volatile for memory ordering
+    if use_nontemporal:
+        is_volatile = True
+
     # memory has no IR node yet.
     kb_dest, kb_ir_type, kb_py_type = cast_kernel_buffer(emitter, memory)
     insert_vector = cast_vector(emitter, register, element_type=kb_ir_type.element_type)
     insert_type = VectorType(insert_vector.type)
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
+    element_type = kb_ir_type.element_type
 
     # TODO: Support elements_per_thread size mismatch and broadcasting
 
@@ -797,20 +819,83 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     start_indices, start_indices_wg, start_indices_th = _build_start_indices(
         emitter, index, dynamic_vals_map_start
     )
-    _create_vec_read_write(
-        emitter,
-        output_shape,
-        kb_dest,
-        insert_vector,
-        None,
-        start_indices,
-        start_indices_wg,
-        start_indices_th,
-        elements_per_thread,
-        get_custom(memory),
-        mask,
-        node_index=index,
-    )
+
+    # Handle volatile stores or write-through (.wt) stores using LLVM dialect
+    if is_volatile or use_nontemporal:
+        # Convert memref to LLVM pointer and use volatile/nontemporal store
+        # Get the base pointer from the memref as an index
+        ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
+
+        # Compute the linear byte offset from the start indices
+        # We need to multiply each index by its corresponding stride and element size
+        strides, offset_val = kb_ir_type.get_strides_and_offset()
+
+        # Check if strides are all static (not dynamic)
+        dynamic_stride = ShapedType.get_dynamic_stride_or_offset()
+        has_dynamic_strides = any(s == dynamic_stride for s in strides)
+
+        if has_dynamic_strides:
+            # Fall back to standard vector.store for dynamic strides
+            # TODO: Support dynamic strides with nontemporal stores
+            _create_vec_read_write(
+                emitter,
+                output_shape,
+                kb_dest,
+                insert_vector,
+                None,
+                start_indices,
+                start_indices_wg,
+                start_indices_th,
+                elements_per_thread,
+                get_custom(memory),
+                mask,
+                node_index=index,
+            )
+            return
+
+        offset = arith_d.constant(IndexType.get(), 0)
+        elem_size_bytes = element_type.width // 8  # Convert bits to bytes
+        for idx, stride in zip(start_indices, strides):
+            # Ensure idx is an index type
+            if not IndexType.isinstance(idx.type):
+                idx = arith_d.index_cast(IndexType.get(), idx)
+            # Multiply index by stride and element size
+            stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
+            stride_offset = arith_d.muli(idx, stride_val)
+            offset = arith_d.addi(offset, stride_offset)
+
+        # Add offset to base pointer
+        final_ptr_index = arith_d.addi(ptr, offset)
+
+        # Convert index to i64 for LLVM inttoptr (LLVM requires integer types, not index)
+        i64 = IntegerType.get_signless(64)
+        final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
+
+        # Convert i64 to LLVM pointer type
+        llvm_ptr_type = llvm_d.PointerType.get()
+        llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
+
+        # Perform store with appropriate cache modifiers
+        # .wt (write-through): nontemporal=True bypasses L1, writes to L2/memory
+        # volatile: prevents compiler optimizations
+        llvm_d.StoreOp(
+            insert_vector, llvm_ptr, volatile_=is_volatile, nontemporal=use_nontemporal
+        )
+    else:
+        _create_vec_read_write(
+            emitter,
+            output_shape,
+            kb_dest,
+            insert_vector,
+            None,
+            start_indices,
+            start_indices_wg,
+            start_indices_th,
+            elements_per_thread,
+            get_custom(memory),
+            mask,
+            node_index=index,
+        )
 
 
 def assume_index_subgroup_uniform(value: Value, element_type: IrType) -> Value:

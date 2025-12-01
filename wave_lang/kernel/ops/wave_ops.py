@@ -151,6 +151,7 @@ def read(
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
     volatile: bool = False,
+    cache_modifier: Optional[str] = None,
 ) -> "Register": ...
 
 
@@ -190,6 +191,8 @@ def write(
     elements_per_thread: Optional[IndexExpr | int] = None,
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
+    volatile: bool = False,
+    cache_modifier: Optional[str] = None,
 ): ...
 
 
@@ -605,7 +608,7 @@ class CustomOp(ABC):
 
     @classmethod
     def from_fx_node(cls: Type[CustomOpT], node: fx.Node) -> CustomOpT:
-        instance = cls(*node.args)
+        instance = cls(*node.args, **node.kwargs)
         instance.fx_node = node
         instance.graph = node.graph
         if hasattr(node, "index"):
@@ -1948,6 +1951,9 @@ class Read(CustomOp):
     target: Optional[tuple[IndexExpr]] = None
     _write_dependency: Optional[list[fx.Node]] = None
     volatile: bool = False
+    cache_modifier: Optional[str] = (
+        None  # ".cv" for coherent-volatile, ".wt" for write-through
+    )
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
@@ -2324,6 +2330,10 @@ class Write(CustomOp):
     bounds: Optional[dict[IndexSymbol, IndexExpr]] = None
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
+    volatile: bool = False
+    cache_modifier: Optional[str] = (
+        None  # ".cv" for coherent-volatile, ".wt" for write-through
+    )
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
