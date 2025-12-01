@@ -273,6 +273,9 @@ def create_transpose_reads(
                 load_elems_per_thread,
                 mapping=mapping,
                 mapping_dynamic_vals=read.mapping_dynamic_vals,
+                _write_dependency=read._write_dependency,
+                volatile=read.volatile,
+                cache_modifier=read.cache_modifier,
             ).add_to_graph(read.graph, loc=read.location)
             new_read.index = read_index
             new_read.vector_shapes = read.vector_shapes
@@ -351,6 +354,11 @@ def create_transpose_writes(
                 store_elems_per_thread,
                 mapping=write.mapping,
                 mapping_dynamic_vals=write.mapping_dynamic_vals,
+                bounds=write.bounds,
+                source=write.source,
+                target=write.target,
+                volatile=write.volatile,
+                cache_modifier=write.cache_modifier,
             ).add_to_graph(write.graph, loc=write.location)
             new_write.index = store_index
             new_write.vector_shapes = write.vector_shapes

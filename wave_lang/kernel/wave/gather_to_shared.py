@@ -274,6 +274,9 @@ def emit_global_to_lds(
                     1,
                     custom.mapping,
                     custom.mapping_dynamic_vals,
+                    _write_dependency=custom._write_dependency,
+                    volatile=custom.volatile,
+                    cache_modifier=custom.cache_modifier,
                 ).add_to_graph(custom.graph, loc=custom.location)
                 new_dyn_vals.append(new_read)
 
