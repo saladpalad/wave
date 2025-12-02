@@ -2366,7 +2366,7 @@ def test_persistent_gemm():
             threads_per_wave=64,
             mma_type=tkw.MMAType.F32_16x16x16_F16,
             vector_shapes={TILE_IDX: 0},
-            use_linearized_layout=True,
+            use_linearized_cta_dims=True,
         ),
     ]
 
@@ -2436,9 +2436,10 @@ def test_persistent_gemm():
     print(persistent_gemm.asm)
 
     # CHECK-LABEL:    test_persistent_gemm
+    # CHECK:          #[[TRANSLATION:.+]] = #iree_codegen.translation_info<pipeline = None workgroup_size = [256, 1, 1] subgroup_size = 64>
     # CHECK:          func.func @persistent_gemm
     # CHECK-SAME:       (%[[ARG0:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG1:[a-zA-Z0-9_]+]]: !stream.binding,
-    # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION:.+]]} {
+    # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION]]} {
 
     # CHECK-DAG:       %[[C128_I32:.+]] = arith.constant 128 : i32
     # CHECK-DAG:       %[[C128:.+]] = arith.constant 128 : index

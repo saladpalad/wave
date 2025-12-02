@@ -234,7 +234,7 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
-    use_linearized_layout: Optional[bool] = None
+    use_linearized_cta_dims: Optional[bool] = None
 
     def max_elems_per_load(self, element_type: DataType) -> int:
         return self.max_bits_per_load // element_type.bitwidth()
@@ -451,7 +451,7 @@ class HardwareConstraint(Constraint):
     @property
     def threads_per_block(self) -> tuple[int]:
         # threads_per_block is set in initialize_wave_constraints method
-        if self.use_linearized_layout is True:
+        if self.use_linearized_cta_dims is True:
             total_waves = (
                 self.waves_per_block[0]
                 * self.waves_per_block[1]

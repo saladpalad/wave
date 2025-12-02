@@ -521,9 +521,9 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-        use_linearized_layout = hardware_constraint.use_linearized_layout is True
+        use_linearized_cta_dims = hardware_constraint.use_linearized_cta_dims is True
 
-        if use_linearized_layout:
+        if use_linearized_cta_dims:
             primary_waves_per_block = None
             primary_wg_constraint = None
 
@@ -577,7 +577,7 @@ class LaunchableWave(Launchable):
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
 
-            if use_linearized_layout:
+            if use_linearized_cta_dims:
                 idx = 0
                 for wave_constraint in self.wave_constraints:
                     count = subs_idxc(wave_constraint.waves_per_block)

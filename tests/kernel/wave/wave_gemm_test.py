@@ -2849,7 +2849,7 @@ def test_persistent_gemm(
             threads_per_wave=threads_per_wave,
             mma_type=mfma_variant,
             vector_shapes={TILE_IDX: 0},
-            use_linearized_layout=True,
+            use_linearized_cta_dimsms=True,
         ),
     ]
 
