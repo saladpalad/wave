@@ -234,7 +234,6 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
-    # None = auto-detect, True = force linearized, False = force 2D
     use_linearized_layout: Optional[bool] = None
 
     def max_elems_per_load(self, element_type: DataType) -> int:
