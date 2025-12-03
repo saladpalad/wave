@@ -602,7 +602,7 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-        static_memory_dims = not (set(input_shape) & set(emitter.dynamic_dims.keys()))
+        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
         # Build mask w/ transformed_index based on the following conditions:
         # bounds exist and all bound dims are in transformed_index
         # no dynamic_val_indices in mapping
@@ -696,8 +696,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-        has_dynamic_vals = bool(mapping.dynamic_val_indices)
-        static_memory_dims = not (set(output_shape) & set(emitter.dynamic_dims.keys()))
+        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
         # Build mask w/ transformed_index based on the following conditions:
         # bounds exist and all bound dims are in transformed_index
         # no dynamic_val_indices in mapping
@@ -705,7 +704,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         if (
             bounds
             and all(dim in transformed_index for dim in bounds)
-            and not has_dynamic_vals
+            and not mapping.dynamic_val_indices
             and static_memory_dims
         ):
             mask = _build_mask(
