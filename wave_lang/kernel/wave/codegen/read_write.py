@@ -621,19 +621,21 @@ def _build_mask_with_mapping(
 def handle_read(emitter: WaveEmitter, node: fx.Node):
     # This is similar to tkl.store with fixed start indices for now.
     try:
-        memory, elements_per_thread, mapping, dyn_vals, bounds, *rest = node.args
+        # Args order: memory, elements_per_thread, mapping, mapping_dynamic_vals, bounds,
+        #             source, target, _write_dependency, volatile
+        (
+            memory,
+            elements_per_thread,
+            mapping,
+            dyn_vals,
+            bounds,
+            _source,
+            _target,
+            _write_dependency,
+            is_volatile,
+        ) = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
-
-    # Check if this is a volatile load or has cache modifiers
-    custom = get_custom(node)
-    is_volatile = custom.volatile if hasattr(custom, "volatile") else False
-    cache_modifier = (
-        custom.cache_modifier if hasattr(custom, "cache_modifier") else None
-    )
-    # .cv (coherent-volatile) implies volatile behavior
-    if cache_modifier == ".cv":
-        is_volatile = True
 
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
     # memory has no IR node yet.
@@ -743,6 +745,8 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 @handle_op(write)
 def handle_write(emitter: WaveEmitter, node: fx.Node):
     try:
+        # Args order: register_, memory, elements_per_thread, mapping, mapping_dynamic_vals,
+        #             bounds, source, target, volatile
         (
             register,
             memory,
@@ -750,22 +754,12 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
             mapping,
             dyn_vals,
             bounds,
-            *rest,
+            _source,
+            _target,
+            is_volatile,
         ) = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
-
-    # Check if this is a volatile store or has cache modifiers
-    custom = get_custom(node)
-    is_volatile = custom.volatile if hasattr(custom, "volatile") else False
-    cache_modifier = (
-        custom.cache_modifier if hasattr(custom, "cache_modifier") else None
-    )
-    # .wt (write-through) needs special handling to bypass L1 cache
-    use_nontemporal = cache_modifier == ".wt"
-    # .wt also implies volatile for memory ordering
-    if use_nontemporal:
-        is_volatile = True
 
     # memory has no IR node yet.
     kb_dest, kb_ir_type, kb_py_type = cast_kernel_buffer(emitter, memory)
@@ -820,38 +814,15 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    # Handle volatile stores or write-through (.wt) stores using LLVM dialect
-    if is_volatile or use_nontemporal:
+    # Handle volatile stores using LLVM dialect
+    if is_volatile:
         # Convert memref to LLVM pointer and use volatile/nontemporal store
         # Get the base pointer from the memref as an index
         ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
 
         # Compute the linear byte offset from the start indices
         # We need to multiply each index by its corresponding stride and element size
-        strides, offset_val = kb_ir_type.get_strides_and_offset()
-
-        # Check if strides are all static (not dynamic)
-        dynamic_stride = ShapedType.get_dynamic_stride_or_offset()
-        has_dynamic_strides = any(s == dynamic_stride for s in strides)
-
-        if has_dynamic_strides:
-            # Fall back to standard vector.store for dynamic strides
-            # TODO: Support dynamic strides with nontemporal stores
-            _create_vec_read_write(
-                emitter,
-                output_shape,
-                kb_dest,
-                insert_vector,
-                None,
-                start_indices,
-                start_indices_wg,
-                start_indices_th,
-                elements_per_thread,
-                get_custom(memory),
-                mask,
-                node_index=index,
-            )
-            return
+        strides, _ = kb_ir_type.get_strides_and_offset()
 
         offset = arith_d.constant(IndexType.get(), 0)
         elem_size_bytes = element_type.width // 8  # Convert bits to bytes
@@ -875,12 +846,8 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
 
-        # Perform store with appropriate cache modifiers
-        # .wt (write-through): nontemporal=True bypasses L1, writes to L2/memory
-        # volatile: prevents compiler optimizations
-        llvm_d.StoreOp(
-            insert_vector, llvm_ptr, volatile_=is_volatile, nontemporal=use_nontemporal
-        )
+        # Perform volatile store with nontemporal hint to bypass L1 cache
+        llvm_d.StoreOp(insert_vector, llvm_ptr, volatile_=True, nontemporal=True)
     else:
         _create_vec_read_write(
             emitter,

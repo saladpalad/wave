@@ -151,7 +151,6 @@ def read(
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
     volatile: bool = False,
-    cache_modifier: Optional[str] = None,
 ) -> "Register": ...
 
 
@@ -192,7 +191,6 @@ def write(
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
     volatile: bool = False,
-    cache_modifier: Optional[str] = None,
 ): ...
 
 
@@ -1941,9 +1939,6 @@ class Read(CustomOp):
     target: Optional[tuple[IndexExpr]] = None
     _write_dependency: Optional[list[fx.Node]] = None
     volatile: bool = False
-    cache_modifier: Optional[str] = (
-        None  # ".cv" for coherent-volatile, ".wt" for write-through
-    )
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
@@ -2319,9 +2314,6 @@ class Write(CustomOp):
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
     volatile: bool = False
-    cache_modifier: Optional[str] = (
-        None  # ".cv" for coherent-volatile, ".wt" for write-through
-    )
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
