@@ -603,10 +603,10 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
             mapping, input_shape, index, is_read=True
         )
         static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
-        # Build mask w/ transformed_index based on the following conditions:
-        # bounds exist and all bound dimensions are in transformed_index
+        # Build mask w/ transformed_index first based on the following conditions:
+        # all bound dimensions are preserved in transformed_index in the mapping
         # no dynamic_val_indices in mapping
-        # memory dimensions are not dynamically set
+        # memory dimensions are not dynamically set in mapping
         if (
             bounds
             and all(dim in transformed_index for dim in bounds)
@@ -698,10 +698,10 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         static_memory_dims = not any(
             dim in emitter.dynamic_dims for dim in output_shape
         )
-        # Build mask w/ transformed_index based on the following conditions:
-        # bounds exist and all bound dimensions are in transformed_index
+        # Build mask w/ transformed_index first based on the following conditions:
+        # all bound dimensions are preserved in transformed_index in the mapping
         # no dynamic_val_indices in mapping
-        # memory dimensions are not dynamically set
+        # memory dimensions are not dynamically set in mapping
         if (
             bounds
             and all(dim in transformed_index for dim in bounds)
