@@ -26,6 +26,7 @@ from wave_lang.support.ir_imports import (
     VectorType,
     amdgpu_d,
     arith_d,
+    llvm_d,
     memref_d,
     rocdl_d,
     vector_d,
