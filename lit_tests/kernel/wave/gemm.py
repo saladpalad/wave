@@ -13,6 +13,7 @@ from wave_lang.kernel.wave.utils.general_utils import (
 from wave_lang.kernel.wave.templates.gemm import (
     get_gemm_kernel,
     get_gemm_kernel_transpose_a_b,
+    get_persistent_gemm_kernel,
 )
 
 M = tkl.sym.M
@@ -2326,114 +2327,26 @@ def test_explicit_shared_gemm():
 
 @run_test
 def test_persistent_gemm():
-    TOTAL_TILES = tkl.sym.TOTAL_TILES
-    NUM_CTAS = tkl.sym.NUM_CTAS
-    TILE_IDX = tkl.sym.TILE_IDX
-    CTA_M_OFFSET = tkl.sym.CTA_M_OFFSET
-    CTA_N_OFFSET = tkl.sym.CTA_N_OFFSET
-    N_TILES = tkl.sym.N_TILES
-
-    i = tkw.IndexMapping.iterator(0)
-    j = tkw.IndexMapping.iterator(1)
-
-    a_read_mapping = tkw.IndexMapping(
-        num_iterators=2,
-        inputs={M: i + CTA_M_OFFSET, K: j},
-        outputs={M: i, K: j},
-    )
-
-    b_read_mapping = tkw.IndexMapping(
-        num_iterators=2,
-        inputs={N: i + CTA_N_OFFSET, K: j},
-        outputs={N: i, K: j},
-    )
-
-    c_write_mapping = tkw.IndexMapping(
-        num_iterators=2,
-        inputs={M: i, N: j},
-        outputs={M: i + CTA_M_OFFSET, N: j + CTA_N_OFFSET},
-    )
-
-    constraints: list[tkw.Constraint] = [
-        tkw.GridConstraint(NUM_CTAS),
-        tkw.WorkgroupConstraint(M, BLOCK_M, 0, primary=False),
-        tkw.WorkgroupConstraint(N, BLOCK_N, 0),
-        tkw.TilingConstraint(K, BLOCK_K),
-        tkw.TilingConstraint(TILE_IDX),
-        tkw.WaveConstraint(M, BLOCK_M / 2),
-        tkw.WaveConstraint(N, BLOCK_N / 2),
-        tkw.HardwareConstraint(
-            threads_per_wave=64,
-            mma_type=tkw.MMAType.F32_16x16x16_F16,
-            vector_shapes={TILE_IDX: 0},
-            use_linearized_cta_dims=True,
-        ),
+    shapes = [
+        (300, 300, 300),
+        (2048, 2048, 2048),
+        (1536, 3072, 19776),
+        (1792, 2895, 2048),
     ]
+    for shape in shapes:
+        persistent_gemm, hyperparams = get_persistent_gemm_kernel(
+            shape=shape,
+            mfma_variant=tkw.MMAType.F32_16x16x16_F16,
+            threads_per_wave=64,
+        )
 
-    @tkw.wave(constraints)
-    def persistent_gemm(
-        a: tkl.Memory[M, K, ADDRESS_SPACE, tkl.f16],
-        b: tkl.Memory[N, K, ADDRESS_SPACE, tkl.f16],
-        c: tkl.Memory[M, N, GLOBAL_ADDRESS_SPACE, tkl.f32],
-    ):
-        total_tiles_scalar = tkw.scalar(TOTAL_TILES, tkl.i32)
-        tkw.set_symbol(TOTAL_TILES, total_tiles_scalar)
-
-        condition = TILE_IDX < TOTAL_TILES
-
-        init_tile_id = tkw.scalar(WORKGROUP_0, tkl.i32)
-
-        @tkw.iterate(TILE_IDX, start=init_tile_id, condition=condition, init_args=[])
-        def persistent_loop():
-            tile_id = tkw.self_index(TILE_IDX, tkl.i32)
-            m_offset = (tile_id // tkw.scalar(N_TILES, tkl.i32)) * tkw.scalar(
-                BLOCK_M, tkl.i32
-            )
-            n_offset = (tile_id % tkw.scalar(N_TILES, tkl.i32)) * tkw.scalar(
-                BLOCK_N, tkl.i32
-            )
-            tkw.set_symbol(CTA_M_OFFSET, m_offset)
-            tkw.set_symbol(CTA_N_OFFSET, n_offset)
-
-            c_reg = tkl.Register[M, N, tkl.f32](0.0)
-
-            @tkw.iterate(axis=K, init_args=[c_reg])
-            def k_loop(acc: tkl.Register[M, N, tkl.f32]) -> tkl.Register[M, N, tkl.f32]:
-                a_reg = tkw.read(a, mapping=a_read_mapping)
-                b_reg = tkw.read(b, mapping=b_read_mapping)
-                acc = tkw.mma(a_reg, b_reg, acc)
-                return acc
-
-            tkw.write(k_loop, c, mapping=c_write_mapping)
-
-            num_cus_scalar = tkw.scalar(NUM_CTAS, tkl.i32)
-            next_idx = tile_id + num_cus_scalar
-            tkw.set_symbol(TILE_IDX, next_idx)
-
-    m_val, n_val, block_m_val, block_n_val = 2048, 2048, 128, 256
-    m_tiles = (m_val + block_m_val - 1) // block_m_val
-    n_tiles = (n_val + block_n_val - 1) // block_n_val
-    total_tiles = m_tiles * n_tiles
-    num_ctas = total_tiles
-
-    options = WaveCompileOptions(
-        subs={
-            M: m_val,
-            N: n_val,
-            K: 2048,
-            BLOCK_M: block_m_val,
-            BLOCK_N: block_n_val,
-            BLOCK_K: 64,
-            TOTAL_TILES: total_tiles,
-            N_TILES: n_tiles,
-            NUM_CTAS: num_ctas,
-            ADDRESS_SPACE: SHARED_ADDRESS_SPACE,
-        },
-        canonicalize=True,
-        compile_to_mlir=True,
-    )
-    persistent_gemm = wave_compile(options, persistent_gemm)
-    print(persistent_gemm.asm)
+        options = WaveCompileOptions(
+            subs=hyperparams,
+            canonicalize=True,
+            compile_to_mlir=True,
+        )
+        persistent_gemm = wave_compile(options, persistent_gemm)
+        print(persistent_gemm.asm)
 
     # CHECK-LABEL:    test_persistent_gemm
     # CHECK:          #[[TRANSLATION:.+]] = #iree_codegen.translation_info<pipeline = None workgroup_size = [256, 1, 1] subgroup_size = 64>

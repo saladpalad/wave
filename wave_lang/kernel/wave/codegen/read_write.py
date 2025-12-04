@@ -602,15 +602,26 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-        # Create merged index: start with original, update with transformed values for matching keys
-        # This ensures mask building uses the transformed values (with offsets) when available
-        mask_index = {**index}
-        for dim in mask_index:
-            if dim in transformed_index:
-                mask_index[dim] = transformed_index[dim]
-        mask = _build_mask(
-            emitter, mask_index, elements_per_thread, bounds, dynamic_vals_map_start
-        )
+        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
+        # Build mask w/ transformed_index based on the following conditions:
+        # - bounds exist and all bound dims are in transformed_index
+        # - no dynamic_val_indices in mapping (i.e., no $dynamic_val placeholders)
+        # - memory dimensions are not dynamically set
+        if (
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not mapping.dynamic_val_indices
+            and static_memory_dims
+        ):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
         index = transformed_index
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)
@@ -684,15 +695,28 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-        # Create merged index: start with original, update with transformed values for matching keys
-        # This ensures mask building uses the transformed values (with offsets) when available
-        mask_index = {**index}
-        for dim in mask_index:
-            if dim in transformed_index:
-                mask_index[dim] = transformed_index[dim]
-        mask = _build_mask(
-            emitter, mask_index, elements_per_thread, bounds, dynamic_vals_map_start
+        static_memory_dims = not any(
+            dim in emitter.dynamic_dims for dim in output_shape
         )
+        # Build mask w/ transformed_index based on the following conditions:
+        # bounds exist and all bound dimensions are in transformed_index
+        # no dynamic_val_indices in mapping
+        # memory dimensions are not dynamically set
+        if (
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not mapping.dynamic_val_indices
+            and static_memory_dims
+        ):
+            mask = _build_mask(
+                emitter,
+                transformed_index,
+                elements_per_thread,
+                bounds,
+                dynamic_vals_map_start,
+            )
+        else:
+            mask = _build_mask(emitter, index, elements_per_thread, bounds)
         index = transformed_index
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)

@@ -534,20 +534,10 @@ class LaunchableWave(Launchable):
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
-            if use_linearized_cta_dims:
-                wave_dim = 0
-                for wave_constraint in self.wave_constraints:
-                    count = subs_idxc(wave_constraint.waves_per_block)
-                    waves_per_block[wave_dim] = count
-                    wave_dim += 1
-            else:
-                for wave_constraint in self.wave_constraints:
-                    print(
-                        "(wave_constraint.waves_per_block",
-                        wave_constraint.waves_per_block,
-                    )
-                    count = subs_idxc(wave_constraint.waves_per_block)
-                    waves_per_block[wave_constraint.workgroup_dim] = count
+            for i, wave_constraint in enumerate(self.wave_constraints):
+                count = subs_idxc(wave_constraint.waves_per_block)
+                dim = i if use_linearized_cta_dims else wave_constraint.workgroup_dim
+                waves_per_block[dim] = count
 
             hardware_constraint.waves_per_block = tuple(waves_per_block)
 

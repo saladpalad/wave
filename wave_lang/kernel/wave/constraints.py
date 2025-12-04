@@ -812,6 +812,9 @@ class WaveConstraint(DistributionConstraint):
     wave_id_0 = floor(thread_id_0 / threads_per_wave)
     wave_id_1 = thread_id_1
     wave_id_2 = thread_id_2
+
+    When linearized_cta_dims is True, the number of threads per block is
+    [wave_id * threads_per_wave, 1, 1]
     """
 
     dim: IndexExpr
@@ -845,11 +848,11 @@ class WaveConstraint(DistributionConstraint):
 
         if use_linearized_cta_dims:
             self.wg_constraint = workgroup_constraint
-            linearized_wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+            wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
             if workgroup_constraint.primary:
-                self.wave_id = linearized_wave_id % self.waves_per_block
+                self.wave_id = wave_id % self.waves_per_block
             else:
-                self.wave_id = floor(linearized_wave_id / self.waves_per_block)
+                self.wave_id = floor(wave_id / self.waves_per_block)
         else:
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim
@@ -882,8 +885,8 @@ class WaveConstraint(DistributionConstraint):
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
             raise ValueError("Wave constraint has no workgroup constraint")
-        #print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
-        #print("Self.tile_size", self.tile_size)
+        # print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
+        # print("Self.tile_size", self.tile_size)
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
 
     @property
