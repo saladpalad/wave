@@ -828,7 +828,7 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
-        use_linearized_cta_dims: bool
+        use_linearized_cta_dims: bool,
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
@@ -845,9 +845,7 @@ class WaveConstraint(DistributionConstraint):
 
         if use_linearized_cta_dims:
             self.wg_constraint = workgroup_constraint
-            linearized_wave_id = floor(
-                  THREAD_0 / hardware_constraint.threads_per_wave
-            )
+            linearized_wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
             if workgroup_constraint.primary:
                 self.wave_id = linearized_wave_id % self.waves_per_block
             else:
@@ -969,7 +967,7 @@ class GridConstraint:
             self.grid_size = (self.grid_size[0], self.grid_size[1], self.grid_size[2])
         else:
             raise ValueError(
-                f"Grid size must be 1D, 2D, or 3D, got {len(self.grid_size)}D"
+                f"Grid size must be 1D 2D, or 3D, got {len(self.grid_size)}D"
             )
 
 

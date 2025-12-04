@@ -527,21 +527,25 @@ class LaunchableWave(Launchable):
             for workgroup_constraint in self.workgroup_constraints:
                 if wave_constraint.dim == workgroup_constraint.dim:
                     wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                        hardware_constraint, workgroup_constraint, use_linearized_cta_dims
+                        hardware_constraint,
+                        workgroup_constraint,
+                        use_linearized_cta_dims,
                     )
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
             if use_linearized_cta_dims:
-                idx = 0
+                wave_dim = 0
                 for wave_constraint in self.wave_constraints:
                     count = subs_idxc(wave_constraint.waves_per_block)
-                    waves_per_block[idx] = count
-                    idx += 1
-                    print("waves_per_block, " ,waves_per_block)
+                    waves_per_block[wave_dim] = count
+                    wave_dim += 1
             else:
                 for wave_constraint in self.wave_constraints:
-                    print("(wave_constraint.waves_per_block", wave_constraint.waves_per_block)
+                    print(
+                        "(wave_constraint.waves_per_block",
+                        wave_constraint.waves_per_block,
+                    )
                     count = subs_idxc(wave_constraint.waves_per_block)
                     waves_per_block[wave_constraint.workgroup_dim] = count
 
