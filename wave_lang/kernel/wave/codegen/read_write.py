@@ -703,8 +703,8 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         # memory dimensions are not dynamically set
         if (
             # bounds and
-            all(dim in transformed_index for dim in bounds)
-            and not mapping.dynamic_val_indices
+            #all(dim in transformed_index for dim in bounds)
+            not mapping.dynamic_val_indices
             and static_memory_dims
         ):
             mask = _build_mask(
