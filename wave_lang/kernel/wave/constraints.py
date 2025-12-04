@@ -882,8 +882,8 @@ class WaveConstraint(DistributionConstraint):
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
             raise ValueError("Wave constraint has no workgroup constraint")
-        print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
-        print("Self.tile_size", self.tile_size)
+        #print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
+        #print("Self.tile_size", self.tile_size)
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
 
     @property
