@@ -1529,70 +1529,86 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
 
 
 def add_iter_arg_subs(
-    current_values: list[Value],
-    subs: dict[IndexExpr, Value],
-    iter_args: list[fx.Node] = None,
+    current_values: list[Value], subs: dict[IndexExpr, Value]
 ) -> dict[IndexExpr, Value]:
-    """
-    Map GET_ITER_ARG(i) symbols to their corresponding values.
-
-    After wave expansion, init_args may be expanded (e.g., Register[M,N] becomes
-    8 separate values). GET_ITER_ARG(i) uses the original init_arg index, so we
-    need to find the first expanded value for each original init_arg.
-
-    Args:
-        current_values: Block arguments (expanded init_args + loop index at end)
-        subs: Substitution dictionary to update
-        iter_args: Optional list of IterArg nodes from the subgraph. If provided,
-                   uses original_iter_idx to correctly map expanded init_args.
-    """
-    if iter_args is not None:
-        # Build mapping from original_iter_idx to the first current_value index
-        # that corresponds to that original init_arg.
-        original_to_first_expanded = {}
-        for i, arg in enumerate(iter_args):
-            if i >= len(current_values) - 1:
-                break
-            custom = get_custom(arg)
-            if (
-                hasattr(custom, "original_iter_idx")
-                and custom.original_iter_idx is not None
-            ):
-                orig_idx = custom.original_iter_idx
-                # Only record the first occurrence (smallest expanded index)
-                if orig_idx not in original_to_first_expanded:
-                    original_to_first_expanded[orig_idx] = i
-
-        # Now map GET_ITER_ARG(i) to the first expanded value for original init_arg i
-        for orig_idx, expanded_idx in original_to_first_expanded.items():
-            value = current_values[expanded_idx]
-            if isinstance(value.type, VectorType):
-                assert (
-                    value.type.rank == 1
-                ), f"Expected vector of rank 1, got {value.type}"
-                value = vector_d.extract(
-                    current_values[expanded_idx],
-                    static_position=[0],
-                    dynamic_position=[],
-                )
-            if isinstance(value.type, IntegerType):
-                value = arith_d.index_cast(IndexType.get(), value)
-            subs[GET_ITER_ARG(orig_idx)] = value
-    else:
-        # Fallback: assume no expansion, direct 1:1 mapping
-        for i in range(len(current_values) - 1):
-            value = current_values[i]
-            if isinstance(value.type, VectorType):
-                assert (
-                    value.type.rank == 1
-                ), f"Expected vector of rank 1, got {value.type}"
-                value = vector_d.extract(
-                    current_values[i], static_position=[0], dynamic_position=[]
-                )
-            if isinstance(value.type, IntegerType):
-                value = arith_d.index_cast(IndexType.get(), value)
-            subs[GET_ITER_ARG(i)] = value
+    for i in range(len(current_values) - 1):
+        value = current_values[i]
+        if isinstance(value.type, VectorType):
+            assert value.type.rank == 1, f"Expected vector of rank 1, got {value.type}"
+            value = vector_d.extract(
+                current_values[i], static_position=[0], dynamic_position=[]
+            )
+        if isinstance(value.type, IntegerType):
+            value = arith_d.index_cast(IndexType.get(), value)
+        subs[GET_ITER_ARG(i)] = value
     return subs
+
+
+# def add_iter_arg_subs(
+# current_values: list[Value],
+# subs: dict[IndexExpr, Value],
+# iter_args: list[fx.Node] = None,
+# ) -> dict[IndexExpr, Value]:
+# """
+# Map GET_ITER_ARG(i) symbols to their corresponding values.
+
+# After wave expansion, init_args may be expanded (e.g., Register[M,N] becomes
+# 8 separate values). GET_ITER_ARG(i) uses the original init_arg index, so we
+# need to find the first expanded value for each original init_arg.
+
+# Args:
+# current_values: Block arguments (expanded init_args + loop index at end)
+# subs: Substitution dictionary to update
+# iter_args: Optional list of IterArg nodes from the subgraph. If provided,
+# uses original_iter_idx to correctly map expanded init_args.
+# """
+# if iter_args is not None:
+## Build mapping from original_iter_idx to the first current_value index
+## that corresponds to that original init_arg.
+# original_to_first_expanded = {}
+# for i, arg in enumerate(iter_args):
+# if i >= len(current_values) - 1:
+# break
+# custom = get_custom(arg)
+# if (
+# hasattr(custom, "original_iter_idx")
+# and custom.original_iter_idx is not None
+# ):
+# orig_idx = custom.original_iter_idx
+## Only record the first occurrence (smallest expanded index)
+# if orig_idx not in original_to_first_expanded:
+# original_to_first_expanded[orig_idx] = i
+
+## Now map GET_ITER_ARG(i) to the first expanded value for original init_arg i
+# for orig_idx, expanded_idx in original_to_first_expanded.items():
+# value = current_values[expanded_idx]
+# if isinstance(value.type, VectorType):
+# assert (
+# value.type.rank == 1
+# ), f"Expected vector of rank 1, got {value.type}"
+# value = vector_d.extract(
+# current_values[expanded_idx],
+# static_position=[0],
+# dynamic_position=[],
+# )
+# if isinstance(value.type, IntegerType):
+# value = arith_d.index_cast(IndexType.get(), value)
+# subs[GET_ITER_ARG(orig_idx)] = value
+# else:
+## Fallback: assume no expansion, direct 1:1 mapping
+# for i in range(len(current_values) - 1):
+# value = current_values[i]
+# if isinstance(value.type, VectorType):
+# assert (
+# value.type.rank == 1
+# ), f"Expected vector of rank 1, got {value.type}"
+# value = vector_d.extract(
+# current_values[i], static_position=[0], dynamic_position=[]
+# )
+# if isinstance(value.type, IntegerType):
+# value = arith_d.index_cast(IndexType.get(), value)
+# subs[GET_ITER_ARG(i)] = value
+# return subs
 
 
 def handle_iterate_while(emitter: WaveEmitter, node: fx.Node):
@@ -1623,10 +1639,6 @@ def handle_iterate_while(emitter: WaveEmitter, node: fx.Node):
     whileOp.before.blocks.append(*init_arg_types)
     whileOp.after.blocks.append(*init_arg_types)
 
-    # Get the subgraph and iter_args early so we can use them for condition evaluation
-    subgraph_obj = emitter.trace.get_subgraph(subgraph)
-    iter_args = get_custom(node).iter_args(subgraph_obj)
-
     # Before block: condition.
     current_values = whileOp.before.blocks[0].arguments
     with InsertionPoint(whileOp.before.blocks[0]):
@@ -1638,30 +1650,31 @@ def handle_iterate_while(emitter: WaveEmitter, node: fx.Node):
         subs = add_emitter_subs(emitter)
         subs[sympy.Symbol("$TMP")] = current_values[-1]
         # Replace iter args with appropriate values.
-        # Pass iter_args to correctly handle expanded init_args with GET_ITER_ARG.
-        subs = add_iter_arg_subs(current_values, subs, iter_args)
+        subs = add_iter_arg_subs(current_values, subs)
         condition = gen_sympy_index(subs, condition)
         scf_d.ConditionOp(condition, current_values)
 
     # After block: body.
     current_values = whileOp.after.blocks[0].arguments
     with InsertionPoint(whileOp.after.blocks[0]):
+        subgraph = emitter.trace.get_subgraph(subgraph)
         # Map the captured variables from the root graph to the subgraph
         for root_v, subgraph_v in zip(
-            implicit_capture, get_custom(node).captured_vars(subgraph_obj)
+            implicit_capture, get_custom(node).captured_vars(subgraph)
         ):
             emitter._node_values[subgraph_v] = emitter.lookup_node_values(root_v)
 
         # Map the iteration variable
         emitter.induction_vars[axis] = current_values[-1]
 
-        # iter_args already retrieved above
+        # Map the iteration arguments
+        iter_args = get_custom(node).iter_args(subgraph)
         for i, arg in enumerate(iter_args):
             if i < len(current_values) - 1:
                 emitter.bind_node_proxy(arg, IRProxyValue(current_values[i]))
 
         # Emit the subgraph
-        return_values = emitter._emit_graph(subgraph_obj)
+        return_values = emitter._emit_graph(subgraph)
         # In case there are no init values, we just return the
         # updated value of the iteration variable.
         if all(x is None for x in return_values):
@@ -1676,6 +1689,89 @@ def handle_iterate_while(emitter: WaveEmitter, node: fx.Node):
         scf_d.YieldOp(flat_ret_values + [emitter.dynamic_dims[axis]])
 
     emitter.bind_node_proxies(node, [IRProxyValue(v) for v in whileOp.results_])
+
+
+# def handle_iterate_while(emitter: WaveEmitter, node: fx.Node):
+# try:
+# axis, init_args, subgraph, implicit_capture, step, start, condition = node.args
+# except ValueError as e:
+# raise ValidationError("Malformed arguments") from e
+
+# init_args = [cast_py_value(emitter, arg) for arg in init_args]
+# init_arg_types = [arg.ir_value.type for arg in init_args]
+
+## Initialize while loop
+# init_value = cast_py_value(emitter, start).ir_value
+# if isinstance(init_value.type, VectorType):
+# init_value = vector_d.extract(
+# init_value, static_position=[0], dynamic_position=[]
+# )
+# if isinstance(init_value.type, IntegerType):
+# init_value = arith_d.index_cast(IndexType.get(), init_value)
+
+# assert isinstance(
+# init_value.type, IndexType
+# ), f"Unhandled start type: {init_value.type}"
+
+# init_args = [arg.ir_value for arg in init_args] + [init_value]
+# init_arg_types = init_arg_types + [init_value.type]
+# whileOp = scf_d.WhileOp(init_arg_types, init_args)
+# whileOp.before.blocks.append(*init_arg_types)
+# whileOp.after.blocks.append(*init_arg_types)
+
+## Get the subgraph and iter_args early so we can use them for condition evaluation
+# subgraph_obj = emitter.trace.get_subgraph(subgraph)
+# iter_args = get_custom(node).iter_args(subgraph_obj)
+
+## Before block: condition.
+# current_values = whileOp.before.blocks[0].arguments
+# with InsertionPoint(whileOp.before.blocks[0]):
+## Replace the axis with a temporary variable when generating the condition
+## to avoid conflicts with the actual value of the axis.
+## Here we use sympy.Symbol because we don't want to add any assumptions
+## on the value of the symbol.
+# condition = condition.subs({axis: sympy.Symbol("$TMP")})
+# subs = add_emitter_subs(emitter)
+# subs[sympy.Symbol("$TMP")] = current_values[-1]
+## Replace iter args with appropriate values.
+## Pass iter_args to correctly handle expanded init_args with GET_ITER_ARG.
+# subs = add_iter_arg_subs(current_values, subs, iter_args)
+# condition = gen_sympy_index(subs, condition)
+# scf_d.ConditionOp(condition, current_values)
+
+## After block: body.
+# current_values = whileOp.after.blocks[0].arguments
+# with InsertionPoint(whileOp.after.blocks[0]):
+## Map the captured variables from the root graph to the subgraph
+# for root_v, subgraph_v in zip(
+# implicit_capture, get_custom(node).captured_vars(subgraph_obj)
+# ):
+# emitter._node_values[subgraph_v] = emitter.lookup_node_values(root_v)
+
+## Map the iteration variable
+# emitter.induction_vars[axis] = current_values[-1]
+
+## iter_args already retrieved above
+# for i, arg in enumerate(iter_args):
+# if i < len(current_values) - 1:
+# emitter.bind_node_proxy(arg, IRProxyValue(current_values[i]))
+
+## Emit the subgraph
+# return_values = emitter._emit_graph(subgraph_obj)
+## In case there are no init values, we just return the
+## updated value of the iteration variable.
+# if all(x is None for x in return_values):
+# scf_d.YieldOp([emitter.dynamic_dims[axis]])
+# return
+
+## Flatten return values and yield them
+# flat_ret_values, _ = pytree.tree_flatten((return_values))
+# flat_ret_values = [
+# cast_py_value(emitter, value).ir_value for value in flat_ret_values
+# ]
+# scf_d.YieldOp(flat_ret_values + [emitter.dynamic_dims[axis]])
+
+# emitter.bind_node_proxies(node, [IRProxyValue(v) for v in whileOp.results_])
 
 
 ###############################################################################
