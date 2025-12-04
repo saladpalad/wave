@@ -521,30 +521,24 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
+        use_linearized_cta_dims = hardware_constraint.use_linearized_cta_dims is True
+
         for wave_constraint in self.wave_constraints:
             for workgroup_constraint in self.workgroup_constraints:
                 if wave_constraint.dim == workgroup_constraint.dim:
                     wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                        hardware_constraint, workgroup_constraint
+                        hardware_constraint,
+                        workgroup_constraint,
+                        use_linearized_cta_dims,
                     )
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
-            thread_dim_idx = 0
-            for wave_constraint in self.wave_constraints:
+            for i, wave_constraint in enumerate(self.wave_constraints):
                 count = subs_idxc(wave_constraint.waves_per_block)
-                wg_constraint = None
-                for wg in self.workgroup_constraints:
-                    if wg.dim == wave_constraint.dim:
-                        wg_constraint = wg
-                        break
+                dim = i if use_linearized_cta_dims else wave_constraint.workgroup_dim
+                waves_per_block[dim] = count
 
-                if wg_constraint and wg_constraint.apply_fn is not None:
-                    waves_per_block[thread_dim_idx] = count
-                    thread_dim_idx += 1
-                else:
-                    waves_per_block[wave_constraint.workgroup_dim] = count
-            print("waves_per_block", waves_per_block)
             hardware_constraint.waves_per_block = tuple(waves_per_block)
 
     def initialize_reductions(self, trace: CapturedTrace) -> None:
