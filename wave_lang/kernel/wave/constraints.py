@@ -828,8 +828,7 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
-        linearized_wave_id: Optional[IndexExpr] = None,
-        waves_per_block_for_dim: Optional[int] = None,
+        use_linearized_cta_dims: bool
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
@@ -844,11 +843,15 @@ class WaveConstraint(DistributionConstraint):
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
 
-        if linearized_wave_id is not None and waves_per_block_for_dim is not None:
+        if use_linearized_cta_dims:
+            self.wg_constraint = workgroup_constraint
+            linearized_wave_id = floor(
+                  THREAD_0 / hardware_constraint.threads_per_wave
+            )
             if workgroup_constraint.primary:
-                self.wave_id = linearized_wave_id % waves_per_block_for_dim
+                self.wave_id = linearized_wave_id % self.waves_per_block
             else:
-                self.wave_id = floor(linearized_wave_id / waves_per_block_for_dim)
+                self.wave_id = floor(linearized_wave_id / self.waves_per_block)
         else:
             self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
                 workgroup_constraint.workgroup_dim
@@ -881,7 +884,8 @@ class WaveConstraint(DistributionConstraint):
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
             raise ValueError("Wave constraint has no workgroup constraint")
-
+        print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
+        print("Self.tile_size", self.tile_size)
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
 
     @property

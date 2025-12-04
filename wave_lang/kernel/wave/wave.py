@@ -523,68 +523,25 @@ class LaunchableWave(Launchable):
         hardware_constraint = self.hardware_constraints[0]
         use_linearized_cta_dims = hardware_constraint.use_linearized_cta_dims is True
 
-        if use_linearized_cta_dims:
-            primary_waves_per_block = None
-            primary_wg_constraint = None
-
-            for wg_constraint in self.workgroup_constraints:
-                if wg_constraint.primary is True:
-                    primary_wg_constraint = wg_constraint
-                    break
-
-            for wg_constraint in self.workgroup_constraints:
-                if wg_constraint.primary is True:
-                    primary_wg_constraint = wg_constraint
-                    break
-                # Assume primary is workgroup_dim = 0 (if not explicity set)
-                if primary_wg_constraint is None and wg_constraint.workgroup_dim == 0:
-                    primary_wg_constraint = wg_constraint
-                    wg_constraint.primary = True
-
-            # Only compute waves_per_block for the primary constraint
-            if primary_wg_constraint is not None:
-                for wave_constraint in self.wave_constraints:
-                    if wave_constraint.dim == primary_wg_constraint.dim:
-                        primary_waves_per_block = subs_idxc(
-                            sympy.ceiling(
-                                primary_wg_constraint.tile_size
-                                / wave_constraint.tile_size
-                            )
-                        )
-                        break
-
-            linearized_wave_id = sympy.floor(
-                THREAD_0 / hardware_constraint.threads_per_wave
-            )
-
-            for wave_constraint in self.wave_constraints:
-                for workgroup_constraint in self.workgroup_constraints:
-                    if wave_constraint.dim == workgroup_constraint.dim:
-                        wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                            hardware_constraint,
-                            workgroup_constraint,
-                            linearized_wave_id=linearized_wave_id,
-                            waves_per_block_for_dim=primary_waves_per_block,
-                        )
-        else:
-            for wave_constraint in self.wave_constraints:
-                for workgroup_constraint in self.workgroup_constraints:
-                    if wave_constraint.dim == workgroup_constraint.dim:
-                        wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                            hardware_constraint, workgroup_constraint
-                        )
+        for wave_constraint in self.wave_constraints:
+            for workgroup_constraint in self.workgroup_constraints:
+                if wave_constraint.dim == workgroup_constraint.dim:
+                    wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
+                        hardware_constraint, workgroup_constraint, use_linearized_cta_dims
+                    )
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
-
             if use_linearized_cta_dims:
                 idx = 0
                 for wave_constraint in self.wave_constraints:
                     count = subs_idxc(wave_constraint.waves_per_block)
                     waves_per_block[idx] = count
                     idx += 1
+                    print("waves_per_block, " ,waves_per_block)
             else:
                 for wave_constraint in self.wave_constraints:
+                    print("(wave_constraint.waves_per_block", wave_constraint.waves_per_block)
                     count = subs_idxc(wave_constraint.waves_per_block)
                     waves_per_block[wave_constraint.workgroup_dim] = count
 
