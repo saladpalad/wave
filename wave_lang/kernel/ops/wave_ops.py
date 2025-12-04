@@ -563,7 +563,6 @@ def define_interface_op(op_name: str) -> Callable[[T], T]:
 def get_custom(node: fx.Node) -> "CustomOp":
     """Get the corresponding CustomOp for a given fx.Node."""
     if not isinstance(node, fx.Node):
-        # breakpoint()
         raise ValueError(f"Expected an fx.Node but got {type(node)}")
 
     # If the node was created as a CustomOp it has a corresponding field
@@ -1036,15 +1035,6 @@ class BinaryOpBase(CustomOp, ABC):
     def infer_shape(self) -> Any:
         lhs_type = get_custom(self.lhs).type
         rhs_type = get_custom(self.rhs).type
-
-        # Handle cases where type is None
-        if lhs_type is None or rhs_type is None:
-            raise ValueError(
-                f"Type inference failed for binary operation: "
-                f"lhs_type={lhs_type}, rhs_type={rhs_type}. "
-                f"Ensure both operands have proper types."
-            )
-
         if isinstance(lhs_type, DataType) and isinstance(rhs_type, DataType):
             has_same_type = True
         else:
@@ -2107,7 +2097,6 @@ class NestedRegionOp(CustomOp):
         return captured_vars
 
     def get_outer_node(self, outer_node: fx.Node) -> fx.Node:
-        #        breakpoint()
         while "lifted" in outer_node.meta:
             outer_node = outer_node.meta["lifted"]
         return outer_node
@@ -2116,7 +2105,6 @@ class NestedRegionOp(CustomOp):
         self, graph: fx.Graph, outer_node: fx.Node
     ) -> Optional[fx.Node]:
         outer_node = self.get_outer_node(outer_node)
-        #        breakpoint()
         for var in self.captured_vars(graph):
             custom = get_custom(var)
             if custom.get_captured_fx_node() == outer_node:
