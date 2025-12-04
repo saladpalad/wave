@@ -840,8 +840,8 @@ class WaveConstraint(DistributionConstraint):
 
         When linearized_wave_id is provided, it means all waves are linearized along THREAD_0 dim.
         This is the convention:
-        - The primary constraint gets wave_id = linearized_wave_id % waves_per_block_for_dim
-        - The non-primary constraint gets wave_id = linearized_wave_id // waves_per_block_for_dim
+          The primary constraint gets wave_id = linearized_wave_id % waves_per_block
+          The non-primary constraint gets wave_id = linearized_wave_id // waves_per_block
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
@@ -885,8 +885,6 @@ class WaveConstraint(DistributionConstraint):
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
             raise ValueError("Wave constraint has no workgroup constraint")
-        # print("Self.wg_constrant.til_size", self.wg_constraint.tile_size)
-        # print("Self.tile_size", self.tile_size)
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
 
     @property

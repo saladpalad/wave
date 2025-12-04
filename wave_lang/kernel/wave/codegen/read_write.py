@@ -604,9 +604,9 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         )
         static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
         # Build mask w/ transformed_index based on the following conditions:
-        # - bounds exist and all bound dims are in transformed_index
-        # - no dynamic_val_indices in mapping (i.e., no $dynamic_val placeholders)
-        # - memory dimensions are not dynamically set
+        # bounds exist and all bound dimensions are in transformed_index
+        # no dynamic_val_indices in mapping
+        # memory dimensions are not dynamically set
         if (
             bounds
             and all(dim in transformed_index for dim in bounds)
