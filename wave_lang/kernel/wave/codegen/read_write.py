@@ -602,17 +602,13 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
-        # Build mask w/ transformed_index first based on the following conditions:
-        # all bound dimensions are preserved in transformed_index in the mapping
-        # no dynamic_val_indices in mapping
-        # memory dimensions are not dynamically set in mapping
-        if (
-            bounds
-            and all(dim in transformed_index for dim in bounds)
-            and not mapping.dynamic_val_indices
-            and static_memory_dims
-        ):
+
+        has_offset = bounds and any(
+            mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
+            for dim in bounds
+            if dim in mapping.input_mapping and dim in mapping.output_mapping
+        )
+        if has_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
@@ -695,19 +691,14 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-        static_memory_dims = not any(
-            dim in emitter.dynamic_dims for dim in output_shape
+
+        # Use transformed_index for mask if mapping adds offsets to bounded dimensions
+        has_offset = bounds and any(
+            mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
+            for dim in bounds
+            if dim in mapping.input_mapping and dim in mapping.output_mapping
         )
-        # Build mask w/ transformed_index first based on the following conditions:
-        # all bound dimensions are preserved in transformed_index in the mapping
-        # no dynamic_val_indices in mapping
-        # memory dimensions are not dynamically set in mapping
-        if (
-            bounds
-            and all(dim in transformed_index for dim in bounds)
-            and not mapping.dynamic_val_indices
-            and static_memory_dims
-        ):
+        if has_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
