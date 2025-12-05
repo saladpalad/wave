@@ -602,11 +602,16 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-        has_symbol_offset = bounds and not mapping.dynamic_val_indices and any(
-            mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
-            for dim in bounds
+        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
+        use_symbol_offset = (
+            # Build the mask w/ transformed index first
+            # If a mapping contains an offset set by a symbol
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not mapping.dynamic_val_indices
+            and static_memory_dims
         )
-        if has_symbol_offset:
+        if use_symbol_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
@@ -689,11 +694,18 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-        has_symbol_offset = bounds and not mapping.dynamic_val_indices and any(
-            mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
-            for dim in bounds
+        static_memory_dims = not any(
+            dim in emitter.dynamic_dims for dim in output_shape
         )
-        if has_symbol_offset:
+        use_symbol_offset = (
+            # Build the mask w/ transformed index first
+            # If a mapping contains an offset set by a symbol
+            bounds
+            and all(dim in transformed_index for dim in bounds)
+            and not mapping.dynamic_val_indices
+            and static_memory_dims
+        )
+        if use_symbol_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
