@@ -711,11 +711,7 @@ def fixup_iterate_nodes(
         iterate = get_custom(iterate)
         reduction_subgraph = trace.get_subgraph(iterate.subgraph_name)
         output = get_custom(get_last(reduction_subgraph.nodes))
-        # Skip if all return values are None or empty (e.g., while loops with no outputs)
-        if all(
-            x is None or (isinstance(x, Sequence) and len(x) == 0)
-            for x in output.return_vals
-        ):
+        if all(x is None for x in output.return_vals):
             continue
         return_vals = output.return_vals[0]
         if isinstance(return_vals, Sequence):
@@ -742,10 +738,6 @@ def fixup_iterate_nodes(
         iterate.update_arg("init_args", new_init_args)
 
         for result_index, get_item in iterate_info.get_results.items():
-            # Check if get_item has users BEFORE we replace
-            had_users_before = len(get_item.fx_node.users) > 0
-            users_before = list(get_item.fx_node.users)
-
             get_item.graph.inserting_before(get_item.fx_node)
             get_result = GetResult(get_item.value, result_index).add_to_graph(
                 get_item.graph, get_item.type, loc=get_item.location

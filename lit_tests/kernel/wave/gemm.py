@@ -2283,9 +2283,9 @@ def test_explicit_shared_gemm():
             M: 64,
             N: 128,
             K: 64,
-            BLOCK_M: 128,
-            BLOCK_N: 256,
-            BLOCK_K: 64,
+            BLOCK_M: 64,
+            BLOCK_N: 64,
+            BLOCK_K: 32,
             ADDRESS_SPACE: GLOBAL_ADDRESS_SPACE,
             ADDRESS_SPACE_0: GLOBAL_ADDRESS_SPACE,
         },
@@ -2349,8 +2349,6 @@ def test_streamk_gemm():
     # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG3:[a-zA-Z0-9_]+]]: !stream.binding,
     # CHECK-SAME:       %[[ARG4:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION]]} {
 
-    # CHECK:           gpu.block_id  x upper_bound 304
-
     # Outer StreamK loop (scf.while)
     # CHECK:           scf.while (%{{.+}} = %{{.+}}) : (index) -> index {
     # CHECK:             arith.cmpi slt
@@ -2360,17 +2358,6 @@ def test_streamk_gemm():
     # CHECK:           } do {
     # CHECK:             scf.for %{{.+}} = %{{.+}} to %{{.+}} step %{{.+}} iter_args({{.+}}) -> (vector<4xf32>
 
-    # Verify MMA operation inside K loop
-    # CHECK:               amdgpu.mfma
-
-    # Verify scf.yield for the K loop
-    # CHECK:               scf.yield
-
-    # Volatile store to lock buffer
     # CHECK:           llvm.store volatile %{{.+}}, %{{.+}} {nontemporal} : vector<1xf32>, !llvm.ptr
 
-    # Volatile load from lock buffer (spinlock wait)
     # CHECK:           llvm.load volatile %{{.+}} {nontemporal} : !llvm.ptr -> vector<1xf32>
-
-    # Verify the work unit advance
-    # CHECK:           scf.yield

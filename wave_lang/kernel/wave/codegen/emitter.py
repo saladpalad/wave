@@ -220,7 +220,6 @@ class WaveEmitter:
                     static_sizes=static_sizes,
                     static_strides=static_strides,
                 )
-                #                breakpoint()
                 self._node_values[node] = [res]
             func_d.return_([])
 
@@ -554,9 +553,6 @@ def add_emitter_subs(
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_1
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_2
     ]
-
-    # Add block dimension constants
-    threads_per_block = emitter.hardware_constraint.threads_per_block
 
     all_symbols = (
         emitter.thread_ids + emitter.workgroup_ids + device_zeros + induction_vars

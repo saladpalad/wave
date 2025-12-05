@@ -2825,7 +2825,6 @@ def test_streamk_gemm(
         num_ctas=num_ctas,
     )
 
-    # Compile kernel
     options = WaveCompileOptions(
         subs=hyperparams,
         canonicalize=True,
@@ -2834,7 +2833,6 @@ def test_streamk_gemm(
 
     gemm = wave_compile(options, streamk_gemm)
 
-    # Allocate buffers
     a = device_randn(m, k, device="cuda", dtype=torch.float16)
     b = device_randn(n, k, device="cuda", dtype=torch.float16)
     c = device_zeros(m, n, device="cuda", dtype=torch.float32)

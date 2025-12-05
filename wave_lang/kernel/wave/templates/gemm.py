@@ -586,10 +586,8 @@ def get_streamk_gemm_kernel(
 ):
     """
     Creates a Stream-K GEMM kernel that distributes work more evenly across CTAs.
-
-    Stream-K partitions work at the granularity of individual K-loop iterations
-    rather than full output tiles, enabling better load balancing for irregular
-    problem sizes.
+    Partitions work at the granularity of K-loop iterations
+    Spinlock approach
     """
     import sympy
     from wave_lang.kernel._support.indexing import sym
@@ -607,7 +605,7 @@ def get_streamk_gemm_kernel(
     total_tiles = num_tiles_m * num_tiles_n
 
     if num_ctas is None:
-        num_ctas = 304  # Default based on typical GPU CU count
+        num_ctas = 304  # TODO: Should be decided by a heuristic, =250 or =total_tiles is best for average case though
 
     iters_per_tile = (k + block_k - 1) // block_k
     streamk_tiles = total_tiles
@@ -843,6 +841,10 @@ def get_streamk_gemm_kernel(
 
                 tid = tkw.scalar(THREAD_0, i32)
                 tkw.set_symbol(THREAD_ID, tid)
+
+                # TODO: unneccessary global read/write
+                # Ideally would like to keep everything in registers, i.e. be able to simply do mac_loop + peer_p_reg
+                # Rather than writing to global and reading it back to match the element distribution among threads
                 tkw.write(
                     mac_loop, partial_buffer, mapping=partial_buffer_write_mapping
                 )
@@ -939,6 +941,8 @@ def get_streamk_gemm_kernel(
         STREAMK_ITERS_PCU: streamk_iters_pcu,
         STREAMK_EXTRA_ITERS: streamk_extra_iters,
         TOTAL_TILES: total_tiles,
+        # num of streamk_tiles/data parallel tiles should be decided by a heuristic
+        # as a good ratio will improve performance in a hybrid streamk kernel
         STREAMK_TILES: streamk_tiles,
         DATA_PARALLEL_TILES: total_data_parallel_tiles,
     }
