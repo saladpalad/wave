@@ -35,9 +35,6 @@ THREAD_2 = index_symbol("$T2")
 
 # Input selector symbol for selecting input from different tensors.
 INPUT_SELECTOR = index_symbol("$INPUT_SELECTOR")
-BLOCKDIM_0 = index_symbol("$BLOCKDIM_0")
-BLOCKDIM_1 = index_symbol("$BLOCKDIM_1")
-BLOCKDIM_2 = index_symbol("$BLOCKDIM_2")
 
 # MMA symbols.
 MMA_LHS = index_symbol("$MMA_LHS")

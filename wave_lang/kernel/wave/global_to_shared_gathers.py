@@ -200,7 +200,6 @@ def update_read_mapping_dynamic_values(read: Read):
                 custom.mapping_dynamic_vals,
                 _write_dependency=custom._write_dependency,
                 volatile=custom.volatile,
-                cache_modifier=custom.cache_modifier,
             ).add_to_graph(custom.graph, loc=custom.location)
             new_dyn_vals.append(new_read)
 
@@ -339,7 +338,6 @@ def add_optimized_nodes(
                     custom.mapping_dynamic_vals,
                     _write_dependency=custom._write_dependency,
                     volatile=custom.volatile,
-                    cache_modifier=custom.cache_modifier,
                 ).add_to_graph(custom.graph, loc=custom.location, tag=custom.tag)
                 read.pre_expansion_id = custom.pre_expansion_id
                 read.vector_shapes = custom.vector_shapes

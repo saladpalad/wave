@@ -160,7 +160,6 @@ def rewrite_node(
             mapping_dynamic_vals=custom_node.mapping_dynamic_vals,
             _write_dependency=custom_node._write_dependency,
             volatile=custom_node.volatile,
-            cache_modifier=custom_node.cache_modifier,
         ).add_to_graph(custom_node.graph, loc=custom_node.location)
         for _ in range(factor)
     ]

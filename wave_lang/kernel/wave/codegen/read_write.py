@@ -622,19 +622,9 @@ def _build_mask_with_mapping(
 def handle_read(emitter: WaveEmitter, node: fx.Node):
     # This is similar to tkl.store with fixed start indices for now.
     try:
-        # Args order: memory, elements_per_thread, mapping, mapping_dynamic_vals, bounds,
-        #             source, target, _write_dependency, volatile
-        (
-            memory,
-            elements_per_thread,
-            mapping,
-            dyn_vals,
-            bounds,
-            _source,
-            _target,
-            _write_dependency,
-            is_volatile,
-        ) = node.args
+        memory, elements_per_thread, mapping, dyn_vals, bounds, volatile, *rest = (
+            node.args
+        )
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 
@@ -684,39 +674,23 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    # Handle volatile loads using LLVM dialect
-    if is_volatile:
-        # Convert memref to LLVM pointer and use volatile load
-        # Get the base pointer from the memref as an index
+    if volatile:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_src)
-
-        # Compute the linear byte offset from the start indices
-        # We need to multiply each index by its corresponding stride and element size
         strides, _ = kb_ir_type.get_strides_and_offset()
         offset = arith_d.constant(IndexType.get(), 0)
-        elem_size_bytes = element_type.width // 8  # Convert bits to bytes
+        elem_size_bytes = element_type.width // 8
+
         for idx, stride in zip(start_indices, strides):
-            # Ensure idx is an index type
-            if not IndexType.isinstance(idx.type):
-                idx = arith_d.index_cast(IndexType.get(), idx)
-            # Multiply index by stride and element size
             stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
             stride_offset = arith_d.muli(idx, stride_val)
             offset = arith_d.addi(offset, stride_offset)
 
-        # Add offset to base pointer
         final_ptr_index = arith_d.addi(ptr, offset)
-
-        # Convert index to i64 for LLVM inttoptr (LLVM requires integer types, not index)
         i64 = IntegerType.get_signless(64)
         final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
 
-        # Convert i64 to LLVM pointer type
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-
-        # Perform volatile load with nontemporal hint to bypass L1 cache
-        # This is equivalent to Triton's .cv (coherent-volatile) modifier
         result = llvm_d.LoadOp(
             vector_type, llvm_ptr, volatile_=True, nontemporal=True
         ).result
@@ -746,8 +720,6 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 @handle_op(write)
 def handle_write(emitter: WaveEmitter, node: fx.Node):
     try:
-        # Args order: register_, memory, elements_per_thread, mapping, mapping_dynamic_vals,
-        #             bounds, source, target, volatile
         (
             register,
             memory,
@@ -755,9 +727,8 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
             mapping,
             dyn_vals,
             bounds,
-            _source,
-            _target,
-            is_volatile,
+            volatile,
+            *rest,
         ) = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
@@ -815,39 +786,25 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    # Handle volatile stores using LLVM dialect
-    if is_volatile:
-        # Convert memref to LLVM pointer and use volatile/nontemporal store
-        # Get the base pointer from the memref as an index
+    if volatile:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
-
-        # Compute the linear byte offset from the start indices
-        # We need to multiply each index by its corresponding stride and element size
         strides, _ = kb_ir_type.get_strides_and_offset()
-
         offset = arith_d.constant(IndexType.get(), 0)
-        elem_size_bytes = element_type.width // 8  # Convert bits to bytes
+        elem_size_bytes = element_type.width // 8
+
         for idx, stride in zip(start_indices, strides):
-            # Ensure idx is an index type
             if not IndexType.isinstance(idx.type):
                 idx = arith_d.index_cast(IndexType.get(), idx)
-            # Multiply index by stride and element size
             stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
             stride_offset = arith_d.muli(idx, stride_val)
             offset = arith_d.addi(offset, stride_offset)
 
-        # Add offset to base pointer
         final_ptr_index = arith_d.addi(ptr, offset)
-
-        # Convert index to i64 for LLVM inttoptr (LLVM requires integer types, not index)
         i64 = IntegerType.get_signless(64)
         final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
 
-        # Convert i64 to LLVM pointer type
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-
-        # Perform volatile store with nontemporal hint to bypass L1 cache
         llvm_d.StoreOp(insert_vector, llvm_ptr, volatile_=True, nontemporal=True)
     else:
         _create_vec_read_write(

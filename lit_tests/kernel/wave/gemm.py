@@ -13,7 +13,11 @@ from wave_lang.kernel.wave.utils.general_utils import (
 from wave_lang.kernel.wave.templates.gemm import (
     get_gemm_kernel,
     get_gemm_kernel_transpose_a_b,
+<<<<<<< HEAD
     get_persistent_gemm_kernel,
+=======
+    get_streamk_gemm_kernel,
+>>>>>>> 58b32217 (update streamk)
 )
 
 M = tkl.sym.M
@@ -2283,9 +2287,9 @@ def test_explicit_shared_gemm():
             M: 64,
             N: 128,
             K: 64,
-            BLOCK_M: 64,
-            BLOCK_N: 64,
-            BLOCK_K: 32,
+            BLOCK_M: 128,
+            BLOCK_N: 256,
+            BLOCK_K: 64,
             ADDRESS_SPACE: GLOBAL_ADDRESS_SPACE,
             ADDRESS_SPACE_0: GLOBAL_ADDRESS_SPACE,
         },
