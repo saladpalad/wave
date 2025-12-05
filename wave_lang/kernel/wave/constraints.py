@@ -963,13 +963,9 @@ class GridConstraint:
             self.grid_size = (self.grid_size, 1, 1)
         elif len(self.grid_size) == 1:
             self.grid_size = (self.grid_size[0], 1, 1)
-        elif len(self.grid_size) == 2:
-            self.grid_size = (self.grid_size[0], self.grid_size[1], 1)
-        elif len(self.grid_size) == 3:
-            self.grid_size = (self.grid_size[0], self.grid_size[1], self.grid_size[2])
         else:
             raise ValueError(
-                f"Grid size must be 1D 2D, or 3D, got {len(self.grid_size)}D"
+                f"Grid size must be 1D, got {len(self.grid_size)}D"
             )
 
 
