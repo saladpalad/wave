@@ -13,6 +13,7 @@ from wave_lang.kernel.wave.utils.general_utils import (
 from wave_lang.kernel.wave.templates.gemm import (
     get_gemm_kernel,
     get_gemm_kernel_transpose_a_b,
+    get_streamk_gemm_kernel,
 )
 
 M = tkl.sym.M
@@ -2282,9 +2283,9 @@ def test_explicit_shared_gemm():
             M: 64,
             N: 128,
             K: 64,
-            BLOCK_M: 64,
-            BLOCK_N: 64,
-            BLOCK_K: 32,
+            BLOCK_M: 128,
+            BLOCK_N: 256,
+            BLOCK_K: 64,
             ADDRESS_SPACE: GLOBAL_ADDRESS_SPACE,
             ADDRESS_SPACE_0: GLOBAL_ADDRESS_SPACE,
         },
@@ -2322,3 +2323,54 @@ def test_explicit_shared_gemm():
     # CHECK:              amdgpu.mfma
     # Verify write to global memory (outside loop)
     # CHECK:            vector.store %{{.*}}, %[[GLOBAL_C]]
+
+
+@run_test
+def test_streamk_gemm():
+    shape = (1536, 3072, 19776)
+    streamk_gemm, hyperparams = get_streamk_gemm_kernel(
+        shape=shape,
+        mfma_variant=tkw.MMAType.F32_16x16x16_F16,
+        threads_per_wave=64,
+    )
+
+    options = WaveCompileOptions(
+        subs=hyperparams,
+        canonicalize=True,
+        compile_to_mlir=True,
+    )
+    streamk_gemm = wave_compile(options, streamk_gemm)
+    print(streamk_gemm.asm)
+
+    # CHECK-LABEL:    test_streamk_gemm
+    # CHECK:          #[[TRANSLATION:.+]] = #iree_codegen.translation_info<pipeline = None workgroup_size = [128, 2, 1] subgroup_size = 64>
+    # CHECK:          func.func @streamk_gemm
+    # CHECK-SAME:       (%[[ARG0:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG1:[a-zA-Z0-9_]+]]: !stream.binding,
+    # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG3:[a-zA-Z0-9_]+]]: !stream.binding,
+    # CHECK-SAME:       %[[ARG4:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION]]} {
+
+    # CHECK:           gpu.block_id  x upper_bound 304
+
+    # Outer StreamK loop (scf.while)
+    # CHECK:           scf.while (%{{.+}} = %{{.+}}) : (index) -> index {
+    # CHECK:             arith.cmpi slt
+    # CHECK:             scf.condition
+
+    # Dynamic K loop (scf.for) with dynamic bounds for MMA
+    # CHECK:           } do {
+    # CHECK:             scf.for %{{.+}} = %{{.+}} to %{{.+}} step %{{.+}} iter_args({{.+}}) -> (vector<4xf32>
+
+    # Verify MMA operation inside K loop
+    # CHECK:               amdgpu.mfma
+
+    # Verify scf.yield for the K loop
+    # CHECK:               scf.yield
+
+    # Volatile store to lock buffer
+    # CHECK:           llvm.store volatile %{{.+}}, %{{.+}} {nontemporal} : vector<1xf32>, !llvm.ptr
+
+    # Volatile load from lock buffer (spinlock wait)
+    # CHECK:           llvm.load volatile %{{.+}} {nontemporal} : !llvm.ptr -> vector<1xf32>
+
+    # Verify the work unit advance
+    # CHECK:           scf.yield

@@ -557,18 +557,9 @@ def add_emitter_subs(
 
     # Add block dimension constants
     threads_per_block = emitter.hardware_constraint.threads_per_block
-    blockdim_constants = [
-        arith_d.constant(IndexType.get(), int(threads_per_block[0])),  # BLOCKDIM_X
-        arith_d.constant(IndexType.get(), int(threads_per_block[1])),  # BLOCKDIM_Y
-        arith_d.constant(IndexType.get(), int(threads_per_block[2])),  # BLOCKDIM_Z
-    ]
 
     all_symbols = (
-        emitter.thread_ids
-        + emitter.workgroup_ids
-        + device_zeros
-        + blockdim_constants
-        + induction_vars
+        emitter.thread_ids + emitter.workgroup_ids + device_zeros + induction_vars
     )
     dynamics = dict(
         zip(
@@ -582,9 +573,6 @@ def add_emitter_subs(
                 DEVICE_DIM_0,
                 DEVICE_DIM_1,
                 DEVICE_DIM_2,
-                BLOCKDIM_0,
-                BLOCKDIM_1,
-                BLOCKDIM_2,
             ]
             + induction_var_syms,
             all_symbols,
