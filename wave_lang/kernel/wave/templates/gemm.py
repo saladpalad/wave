@@ -24,7 +24,7 @@ def get_gemm_kernel(
     dtype: torch.dtype = torch.float16,
     threads_per_wave: int = 64,
     block_shape: Optional[tuple[int, int, int]] = None,
-    waves_per_block: Optional[tuple[int, int, int]] = None,
+    waves_per_block: Optional[tuple[int, int]] = None,
 ):
     if not isinstance(dynamic_dims, Sequence):
         dynamic_dims = (dynamic_dims,) * 3
@@ -38,7 +38,7 @@ def get_gemm_kernel(
         waves_per_block = (2, 2)
 
     assert len(block_shape) == 3, "block_shape needs to be rank 3 for M, N, K."
-    assert len(waves_per_block) == 2, "waves_per_block needs to be rank 2 for M, N."
+    assert len(waves_per_block) == 2, "waves_per_block neds to be rank 2 for M, N."
 
     # Input sizes
     M = tkl.sym.M
@@ -301,11 +301,7 @@ def get_persistent_gemm_kernel(
         b: tkl.Memory[N, K, ADDRESS_SPACE, tkl.f16],
         c: tkl.Memory[M, N, GLOBAL_ADDRESS_SPACE, tkl.f32],
     ):
-        total_tiles_scalar = tkw.scalar(TOTAL_TILES, tkl.i32)
-        tkw.set_symbol(TOTAL_TILES, total_tiles_scalar)
-
         condition = TILE_IDX < TOTAL_TILES
-
         init_tile_id = tkw.scalar(WORKGROUP_0, tkl.i32)
 
         @tkw.iterate(TILE_IDX, start=init_tile_id, condition=condition, init_args=[])
