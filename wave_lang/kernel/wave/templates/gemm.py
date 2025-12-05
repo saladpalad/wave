@@ -34,11 +34,11 @@ def get_gemm_kernel(
         block_shape = (64, 64, 32)
 
     if not waves_per_block:
-        # WAVE_M, WAVE_N
-        waves_per_block = (2, 2)
+        # WAVE_M, WAVE_N, WAVE_K (K unused, waves don't tile reduction dim)
+        waves_per_block = (2, 2, 1)
 
     assert len(block_shape) == 3, "block_shape needs to be rank 3 for M, N, K."
-    assert len(waves_per_block) == 2, "waves_per_block neds to be rank 2 for M, N."
+    assert len(waves_per_block) == 3, "waves_per_block needs to be rank 3 for M, N, K."
 
     # Input sizes
     M = tkl.sym.M
@@ -213,14 +213,14 @@ def get_persistent_gemm_kernel(
     mfma_variant: MMAType,
     threads_per_wave: int = 64,
     block_shape: Optional[tuple[int, int, int]] = None,
+    waves_per_block: Optional[tuple[int, int, int]] = None,
     num_ctas: Optional[int] = None,
 ):
     """
     Creates a persistent GEMM kernel that uses a single workgroup dimension
     with linearized CTA dims. Each CTA iterates over multiple output tiles.
+
     """
-    if not block_shape:
-        block_shape = (128, 256, 64)
 
     m, n, k = shape
     block_m, block_n, block_k = block_shape
@@ -275,14 +275,20 @@ def get_persistent_gemm_kernel(
         tkw.WorkgroupConstraint(N, BLOCK_N, 0, primary=False),
         tkw.TilingConstraint(K, BLOCK_K),
         tkw.TilingConstraint(TILE_IDX),
-        tkw.WaveConstraint(M, BLOCK_M / 4),
+    ]
+
+    constraints.append(tkw.WaveConstraint(M, BLOCK_M / waves_per_block[0]))
+    if waves_per_block[1] > 1:
+        constraints.append(tkw.WaveConstraint(N, BLOCK_N / waves_per_block[1]))
+
+    constraints.append(
         tkw.HardwareConstraint(
             threads_per_wave=threads_per_wave,
             mma_type=mfma_variant,
             vector_shapes={TILE_IDX: 0},
             use_linearized_cta_dims=True,
         ),
-    ]
+    )
 
     @tkw.wave(constraints)
     def persistent_gemm(

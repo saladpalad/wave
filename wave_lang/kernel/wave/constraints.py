@@ -831,21 +831,41 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
+        use_linearized_cta_dims: bool,
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
-          wave_id[0] = thread_id[0] / threads_per_wave
+        wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
+
+        When linearized_wave_id is provided, it means all waves are linearized along THREAD_0 dim.
+        waves_per_block is used for how we want to distribute the waves along each dim
+
+        This is the convention:
+        The primary constraint gets wave_id = linearized_wave_id % waves_per_dim
+        The non-primary constraint gets wave_id = linearized_wave_id // waves_per_dim
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
-        self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
-            workgroup_constraint.workgroup_dim
-        )
-        # Only handling the wg_dim_0 case because Wave assumes
-        # all threads in a wave are handled in wg_dim_0.
-        if workgroup_constraint.workgroup_dim == 0:
-            self.wave_id = floor(self.wave_id / hardware_constraint.threads_per_wave)
+
+        if use_linearized_cta_dims:
+            self.wg_constraint = workgroup_constraint
+            waves_per_dim = self.waves_per_block
+            wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
+            if workgroup_constraint.primary:
+                self.wave_id = wave_id % waves_per_dim
+            else:
+                self.wave_id = floor(wave_id / waves_per_dim)
+        else:
+            self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
+                workgroup_constraint.workgroup_dim
+            )
+            # Only handling the wg_dim_0 case because Wave assumes
+            # all threads in a wave are handled in wg_dim_0.
+            if workgroup_constraint.workgroup_dim == 0:
+                self.wave_id = floor(
+                    self.wave_id / hardware_constraint.threads_per_wave
+                )
 
         assert (
             old_wave_id is None or self.wave_id == old_wave_id

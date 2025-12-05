@@ -572,6 +572,51 @@ def _create_vec_read_write(
             return
 
 
+def _build_mask_with_mapping(
+    emitter: WaveEmitter,
+    mapping: IndexMapping,
+    index: dict[IndexSymbol, IndexSequence],
+    transformed_index: dict[IndexSymbol, IndexSequence],
+    memory_shape: tuple[IndexSymbol, ...],
+    elements_per_thread: int,
+    bounds: Optional[tuple[IndexSymbol, ...]],
+    dynamic_vals_map: dict[IndexExpr, Value],
+) -> Optional[Value]:
+    """
+    Build a mask for read/write operations, when a mapping is used
+
+    Either build the mask w/ the original index or transformed index
+    We want to build the mask w/ the transformed index when
+      - the transformed_index has the same dimensions in bounds for correct masking
+      - no dynamic_val_indices are used in the mapping
+      - memory dims are not dynamic values
+    This matches the case when the original index can be transformed within the mapping itself i.e.
+
+    tkw.IndexMapping(num_iterators=2, inputs={M: i + CTA_M_OFFSET, K: j}, outputs={M: i, K: j},)
+
+    So the transformed index: "i + OFFSET" must be passed into the masking first
+    else the original index is passed into the masking first if it is not changed within the mapping
+
+    """
+    static_memory_dims = not any(dim in emitter.dynamic_dims for dim in memory_shape)
+    use_transformed_index = (
+        bounds
+        and all(dim in transformed_index for dim in bounds)
+        and not mapping.dynamic_val_indices
+        and static_memory_dims
+    )
+    if use_transformed_index:
+        return _build_mask(
+            emitter,
+            transformed_index,
+            elements_per_thread,
+            bounds,
+            dynamic_vals_map,
+        )
+    else:
+        return _build_mask(emitter, index, elements_per_thread, bounds)
+
+
 @handle_op(read)
 def handle_read(emitter: WaveEmitter, node: fx.Node):
     # This is similar to tkl.store with fixed start indices for now.
@@ -602,25 +647,16 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-        static_memory_dims = not any(dim in emitter.dynamic_dims for dim in input_shape)
-        use_symbol_offset = (
-            # Build the mask w/ transformed index first
-            # If a mapping contains an offset set by a symbol
-            bounds
-            and all(dim in transformed_index for dim in bounds)
-            and not mapping.dynamic_val_indices
-            and static_memory_dims
+        mask = _build_mask_with_mapping(
+            emitter,
+            mapping,
+            index,
+            transformed_index,
+            input_shape,
+            elements_per_thread,
+            bounds,
+            dynamic_vals_map_start,
         )
-        if use_symbol_offset:
-            mask = _build_mask(
-                emitter,
-                transformed_index,
-                elements_per_thread,
-                bounds,
-                dynamic_vals_map_start,
-            )
-        else:
-            mask = _build_mask(emitter, index, elements_per_thread, bounds)
         index = transformed_index
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)
@@ -694,27 +730,16 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-        static_memory_dims = not any(
-            dim in emitter.dynamic_dims for dim in output_shape
+        mask = _build_mask_with_mapping(
+            emitter,
+            mapping,
+            index,
+            transformed_index,
+            output_shape,
+            elements_per_thread,
+            bounds,
+            dynamic_vals_map_start,
         )
-        use_symbol_offset = (
-            # Build the mask w/ transformed index first
-            # If a mapping contains an offset set by a symbol
-            bounds
-            and all(dim in transformed_index for dim in bounds)
-            and not mapping.dynamic_val_indices
-            and static_memory_dims
-        )
-        if use_symbol_offset:
-            mask = _build_mask(
-                emitter,
-                transformed_index,
-                elements_per_thread,
-                bounds,
-                dynamic_vals_map_start,
-            )
-        else:
-            mask = _build_mask(emitter, index, elements_per_thread, bounds)
         index = transformed_index
     else:
         mask = _build_mask(emitter, index, elements_per_thread, bounds)

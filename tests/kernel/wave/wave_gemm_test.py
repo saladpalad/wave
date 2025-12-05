@@ -2804,15 +2804,24 @@ def test_explicit_shared_gemm(m, n, k, block_m, block_n, block_k, run_bench):
         pytest.param(MMAType.RDNA4_WAVE32_F32_16x16x16_F16, 32, marks=require_rdna4),
     ],
 )
+@pytest.mark.parametrize(
+    "waves_per_block",
+    [
+        (4, 1, 1),
+        (2, 2, 1),
+    ],
+)
 def test_persistent_gemm(
     shape: tuple[int],
     mfma_variant: MMAType,
     threads_per_wave: int,
+    waves_per_block: tuple[int, int, int],
 ):
     persistent_gemm, hyperparams = get_persistent_gemm_kernel(
         shape=shape,
         mfma_variant=mfma_variant,
         threads_per_wave=threads_per_wave,
+        waves_per_block=waves_per_block,
     )
 
     # Compile kernel
