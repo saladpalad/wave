@@ -286,7 +286,7 @@ def get_persistent_gemm_kernel(
             threads_per_wave=threads_per_wave,
             mma_type=mfma_variant,
             vector_shapes={TILE_IDX: 0},
-            use_linearized_cta_dims=True,
+            use_linearized_dims=True,
         ),
     )
 

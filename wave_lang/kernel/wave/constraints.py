@@ -234,7 +234,7 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
-    use_linearized_cta_dims: Optional[bool] = None
+    use_linearized_dims: Optional[bool] = None
 
     def max_elems_per_load(self, element_type: DataType) -> int:
         return self.max_bits_per_load // element_type.bitwidth()
@@ -451,7 +451,7 @@ class HardwareConstraint(Constraint):
     @property
     def threads_per_block(self) -> tuple[int]:
         # threads_per_block is set in initialize_wave_constraints method
-        if self.use_linearized_cta_dims is True:
+        if self.use_linearized_dims is True:
             total_waves = (
                 self.waves_per_block[0]
                 * self.waves_per_block[1]
@@ -831,7 +831,7 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
-        use_linearized_cta_dims: bool,
+        use_linearized_dims: bool,
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
@@ -848,7 +848,7 @@ class WaveConstraint(DistributionConstraint):
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
 
-        if use_linearized_cta_dims:
+        if use_linearized_dims:
             self.wg_constraint = workgroup_constraint
             waves_per_dim = self.waves_per_block
             wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)

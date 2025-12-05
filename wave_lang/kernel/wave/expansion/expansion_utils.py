@@ -100,7 +100,7 @@ def get_dim_scaling(
             wave_count = 1
             if isinstance(constraint, WorkgroupConstraint):
                 hw_cons = hardware_constraints[0]
-                if hw_cons.use_linearized_cta_dims:
+                if hw_cons.use_linearized_dims:
                     # When linearized, multiple dims share the same workgroup_dim,
                     # so look up wave_count by logical dimension instead
                     for wave_constraint in constraints:
