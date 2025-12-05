@@ -804,6 +804,7 @@ class WaveConstraint(DistributionConstraint):
     wave_id_0 = floor(thread_id_0 / threads_per_wave)
     wave_id_1 = thread_id_1
     wave_id_2 = thread_id_2
+<<<<<<< HEAD
 
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -813,6 +814,8 @@ class WaveConstraint(DistributionConstraint):
 >>>>>>> 37507f4c (before)
 =======
 >>>>>>> 18a11eb3 (cleanup debugging)
+=======
+>>>>>>> 9babe603 (update template)
     """
 
     dim: IndexExpr
@@ -834,7 +837,6 @@ class WaveConstraint(DistributionConstraint):
         The wave_id is the same as the thread_id, with the exception of
           wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
-
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
@@ -846,7 +848,6 @@ class WaveConstraint(DistributionConstraint):
         # all threads in a wave are handled in wg_dim_0.
         if workgroup_constraint.workgroup_dim == 0:
             self.wave_id = floor(self.wave_id / hardware_constraint.threads_per_wave)
-
         assert (
             old_wave_id is None or self.wave_id == old_wave_id
         ), f"Conflicting preset wave_id old: {old_wave_id} new: {self.wave_id}"
