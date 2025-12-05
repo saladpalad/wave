@@ -38,7 +38,7 @@ def get_gemm_kernel(
         waves_per_block = (2, 2, 1)
 
     assert len(block_shape) == 3, "block_shape needs to be rank 3 for M, N, K."
-    assert len(waves_per_block) == 3, "waves_per_block needs to be rank 3 for M, N, K."
+    assert len(waves_per_block) == 2, "waves_per_block needs to be rank 2 for M, N."
 
     # Input sizes
     M = tkl.sym.M

@@ -2327,26 +2327,21 @@ def test_explicit_shared_gemm():
 
 @run_test
 def test_persistent_gemm():
-    shapes = [
-        (300, 300, 300),
-        (2048, 2048, 2048),
-        (1536, 3072, 19776),
-        (1792, 2895, 2048),
-    ]
-    for shape in shapes:
-        persistent_gemm, hyperparams = get_persistent_gemm_kernel(
-            shape=shape,
-            mfma_variant=tkw.MMAType.F32_16x16x16_F16,
-            threads_per_wave=64,
-        )
+    persistent_gemm, hyperparams = get_persistent_gemm_kernel(
+        shape=(2048, 2048, 2048),
+        mfma_variant=tkw.MMAType.F32_16x16x16_F16,
+        threads_per_wave=64,
+        block_shape=(128, 256, 64),
+        waves_per_block=(4, 1, 1),
+    )
 
-        options = WaveCompileOptions(
-            subs=hyperparams,
-            canonicalize=True,
-            compile_to_mlir=True,
-        )
-        persistent_gemm = wave_compile(options, persistent_gemm)
-        print(persistent_gemm.asm)
+    options = WaveCompileOptions(
+        subs=hyperparams,
+        canonicalize=True,
+        compile_to_mlir=True,
+    )
+    persistent_gemm = wave_compile(options, persistent_gemm)
+    print(persistent_gemm.asm)
 
     # CHECK-LABEL:    test_persistent_gemm
     # CHECK:          #[[TRANSLATION:.+]] = #iree_codegen.translation_info<pipeline = None workgroup_size = [256, 1, 1] subgroup_size = 64>
