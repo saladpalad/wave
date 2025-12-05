@@ -30,6 +30,7 @@ from ..constraints import (
     Constraint,
     HardwareConstraint,
     TilingConstraint,
+    WaveConstraint,
     WorkgroupConstraint,
 )
 from ..utils.general_utils import infer_dim
@@ -76,7 +77,6 @@ def get_dim_scaling(
     }
     for constraint in constraints:
         if isinstance(constraint, (WorkgroupConstraint, TilingConstraint)):
-            hw_cons = hardware_constraints[0]
             tile_size = idxc.get_static_value(constraint.tile_size)
             # Update tile size, if dim is not a pure dim expr. (e.g K/2)
             if (
@@ -99,7 +99,12 @@ def get_dim_scaling(
 
             wave_count = 1
             if isinstance(constraint, WorkgroupConstraint):
-                wave_count = hw_cons.waves_per_block[constraint.workgroup_dim]
+                for wave_constraint in constraints:
+                    if isinstance(wave_constraint, WaveConstraint) and wave_constraint.dim == constraint.dim:
+                        wave_count = wave_constraint.waves_per_block
+                        break
+                else:
+                    wave_count = 1
             if tile_size is None or wave_count is None or vector_size is None:
                 raise ValueError(
                     "Tile size, wave count and vector size must be statically known"
