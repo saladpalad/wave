@@ -2287,9 +2287,9 @@ def test_explicit_shared_gemm():
             M: 64,
             N: 128,
             K: 64,
-            BLOCK_M: 128,
-            BLOCK_N: 256,
-            BLOCK_K: 64,
+            BLOCK_M: 64,
+            BLOCK_N: 64,
+            BLOCK_K: 32,
             ADDRESS_SPACE: GLOBAL_ADDRESS_SPACE,
             ADDRESS_SPACE_0: GLOBAL_ADDRESS_SPACE,
         },
@@ -2353,6 +2353,7 @@ def test_persistent_gemm():
     # CHECK-SAME:       (%[[ARG0:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG1:[a-zA-Z0-9_]+]]: !stream.binding,
     # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION]]} {
 
+<<<<<<< HEAD
     # CHECK-DAG:       %[[C304_I32:.+]] = arith.constant 304 : i32
     # CHECK-DAG:       %[[C128:.+]] = arith.constant 128 : index
     # CHECK:           %[[BLOCK_ID_X:.+]] = gpu.block_id  x upper_bound 304
@@ -2361,12 +2362,26 @@ def test_persistent_gemm():
     # CHECK:           %{{.*}} = scf.while (%[[ARG3:.+]] = %[[BLOCK_ID_X]]) : (index) -> index {
     # CHECK:             %{{.*}} = arith.cmpi slt, %[[ARG3]], %[[C128]] : index
     # CHECK:             scf.condition(%{{.*}}) %[[ARG3]] : index
+=======
+    # Outer StreamK loop (scf.while)
+    # CHECK:           scf.while (%{{.+}} = %{{.+}}) : (index) -> index {
+    # CHECK:             arith.cmpi slt
+    # CHECK:             scf.condition
+
+    # Dynamic K loop (scf.for) with dynamic bounds for MMA
+>>>>>>> 18a11eb3 (cleanup debugging)
     # CHECK:           } do {
     # CHECK:             %{{.*}} = arith.index_cast %[[ARG3]] : index to i32
 
+<<<<<<< HEAD
     # Advance to next tile
     # CHECK:             %{{.*}} = arith.addi %{{.*}}, %[[C304_I32]] : i32
     # CHECK:             %{{.*}} = arith.index_cast %{{.*}} : i32 to index
     # CHECK:             scf.yield %{{.*}} : index
     # CHECK:           }
     # CHECK:           return
+=======
+    # CHECK:           llvm.store volatile %{{.+}}, %{{.+}} {nontemporal} : vector<1xf32>, !llvm.ptr
+
+    # CHECK:           llvm.load volatile %{{.+}} {nontemporal} : !llvm.ptr -> vector<1xf32>
+>>>>>>> 18a11eb3 (cleanup debugging)

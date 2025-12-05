@@ -12,7 +12,6 @@ from typing import Any, Callable, Optional, Sequence
 import warnings
 
 import sympy
-from sympy.core.sorting import default_sort_key
 import torch
 import torch.fx as fx
 from torch.utils import _pytree as pytree
@@ -409,8 +408,7 @@ def get_largest_index_and_size(
         # x[2] is the size of the dimension.
         # We want to sort in descending order, first by size, then by index.
         # (pick the largest size with the largest index).
-        # Use default_sort_key for symbolic expressions to avoid comparison errors.
-        key=lambda x: (default_sort_key(-x[2]), -x[0]),
+        key=lambda x: (-x[2], -x[0]),
     )
     return sorted_values[0][1:]
 

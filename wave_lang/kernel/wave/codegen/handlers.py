@@ -1437,23 +1437,6 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
 
     # Flatten init_args and get IR values for each of them.
     flat_init_args, _ = pytree.tree_flatten((init_args))
-    # Ensure any unemitted nodes in init_args are emitted/bound first
-    for arg in flat_init_args:
-        if isinstance(arg, fx.Node) and arg not in emitter._node_values:
-            # Check if this is a get_result or other node that needs emission
-            if get_custom(arg).tkw_op_name == "get_result":
-                ## Emit the get_result node directly
-                emitter._emit_function_call_node(arg)
-            # If this is a placeholder with a lifted value, bind it from parent graph
-            elif "lifted" in arg.meta:
-                root_v = arg.meta["lifted"]
-                # Follow the lifted chain to the actual root node
-                while "lifted" in root_v.meta:
-                    root_v = root_v.meta["lifted"]
-                # If the root value hasn't been emitted, emit it now
-                if root_v not in emitter._node_values:
-                    emitter._emit_function_call_node(root_v)
-                emitter._node_values[arg] = emitter.lookup_node_values(root_v)
     flat_init_args = [cast_py_value(emitter, arg) for arg in flat_init_args]
 
     start = arith_d.constant(IndexType.get(), int(0))
@@ -1475,7 +1458,6 @@ def handle_iterate(emitter: WaveEmitter, node: fx.Node):
             "Could not determine step size for reduction due to missing tiling constraint."
         )
 
-    #    breakpoint()
     forOp = scf_d.ForOp(
         start,
         end,

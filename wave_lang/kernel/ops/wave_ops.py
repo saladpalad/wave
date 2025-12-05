@@ -605,7 +605,7 @@ class CustomOp(ABC):
 
     @classmethod
     def from_fx_node(cls: Type[CustomOpT], node: fx.Node) -> CustomOpT:
-        instance = cls(*node.args, **node.kwargs)
+        instance = cls(*node.args)
         instance.fx_node = node
         instance.graph = node.graph
         if hasattr(node, "index"):
@@ -1380,21 +1380,6 @@ class IterArg(Placeholder):
     @iter_idx.setter
     def iter_idx(self, value):
         self.fx_node.iter_idx = value
-
-    @property
-    def original_iter_idx(self):
-        """
-        Returns the original iter_idx before expansion.
-        This is used for GET_ITER_ARG(i) which uses original indices.
-        """
-        if hasattr(self.fx_node, "original_iter_idx"):
-            return self.fx_node.original_iter_idx
-        # If not set, fall back to iter_idx (for non-expanded cases)
-        return self.iter_idx
-
-    @original_iter_idx.setter
-    def original_iter_idx(self, value):
-        self.fx_node.original_iter_idx = value
 
     @property
     def distributed_shape(self):
@@ -2229,11 +2214,6 @@ class Iterate(NestedRegionOp):
         return_vals = return_node.return_vals[0]
         if not isinstance(return_vals, Sequence):
             return_vals = [return_vals]
-        # Handle empty return values (e.g., while loops with no outputs) fixes bug
-        if not return_vals or all(
-            x is None or (isinstance(x, Sequence) and len(x) == 0) for x in return_vals
-        ):
-            return []
         for return_val in return_vals:
             return_dims = get_custom(return_val).indexing_dims
             reduced_dims = [dims for dims in return_dims if dims != self.axis]

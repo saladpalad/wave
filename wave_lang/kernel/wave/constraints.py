@@ -234,7 +234,6 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
-    use_linearized_cta_dims: Optional[bool] = None
 
     def max_elems_per_load(self, element_type: DataType) -> int:
         return self.max_bits_per_load // element_type.bitwidth()
@@ -451,13 +450,6 @@ class HardwareConstraint(Constraint):
     @property
     def threads_per_block(self) -> tuple[int]:
         # threads_per_block is set in initialize_wave_constraints method
-        if self.use_linearized_cta_dims is True:
-            total_waves = (
-                self.waves_per_block[0]
-                * self.waves_per_block[1]
-                * self.waves_per_block[2]
-            )
-            return (total_waves * self.threads_per_wave, 1, 1)
         return (
             self.waves_per_block[0] * self.threads_per_wave,
         ) + self.waves_per_block[1:]
@@ -814,10 +806,13 @@ class WaveConstraint(DistributionConstraint):
     wave_id_2 = thread_id_2
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     When linearized_cta_dims is True, the number of threads per block is
     [wave_id * threads_per_wave, 1, 1]
 >>>>>>> 37507f4c (before)
+=======
+>>>>>>> 18a11eb3 (cleanup debugging)
     """
 
     dim: IndexExpr
@@ -834,38 +829,23 @@ class WaveConstraint(DistributionConstraint):
         self,
         hardware_constraint: HardwareConstraint,
         workgroup_constraint: WorkgroupConstraint,
-        use_linearized_cta_dims: bool,
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
           wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
 
-        When linearized_wave_id is provided, it means all waves are linearized along THREAD_0 dim.
-        This is the convention:
-          The primary constraint gets wave_id = linearized_wave_id % waves_per_block
-          The non-primary constraint gets wave_id = linearized_wave_id // waves_per_block
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
 
-        if use_linearized_cta_dims:
-            self.wg_constraint = workgroup_constraint
-            wave_id = floor(THREAD_0 / hardware_constraint.threads_per_wave)
-            if workgroup_constraint.primary:
-                self.wave_id = wave_id % self.waves_per_block
-            else:
-                self.wave_id = floor(wave_id / self.waves_per_block)
-        else:
-            self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
-                workgroup_constraint.workgroup_dim
-            )
-            # Only handling the wg_dim_0 case because Wave assumes
-            # all threads in a wave are handled in wg_dim_0.
-            if workgroup_constraint.workgroup_dim == 0:
-                self.wave_id = floor(
-                    self.wave_id / hardware_constraint.threads_per_wave
-                )
+        self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
+            workgroup_constraint.workgroup_dim
+        )
+        # Only handling the wg_dim_0 case because Wave assumes
+        # all threads in a wave are handled in wg_dim_0.
+        if workgroup_constraint.workgroup_dim == 0:
+            self.wave_id = floor(self.wave_id / hardware_constraint.threads_per_wave)
 
         assert (
             old_wave_id is None or self.wave_id == old_wave_id
@@ -888,6 +868,7 @@ class WaveConstraint(DistributionConstraint):
     def waves_per_block(self) -> IndexExpr:
         if not self.wg_constraint:
             raise ValueError("Wave constraint has no workgroup constraint")
+
         return ceiling(self.wg_constraint.tile_size / self.tile_size)
 
     @property

@@ -2824,7 +2824,6 @@ def test_persistent_gemm(
         waves_per_block=waves_per_block,
     )
 
-    # Compile kernel
     options = WaveCompileOptions(
         subs=hyperparams,
         canonicalize=True,

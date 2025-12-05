@@ -158,7 +158,6 @@ def rewrite_node(
             custom_node.elements_per_thread // factor,
             mapping=custom_node.mapping,
             mapping_dynamic_vals=custom_node.mapping_dynamic_vals,
-            _write_dependency=custom_node._write_dependency,
             volatile=custom_node.volatile,
         ).add_to_graph(custom_node.graph, loc=custom_node.location)
         for _ in range(factor)

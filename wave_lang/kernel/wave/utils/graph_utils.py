@@ -163,8 +163,6 @@ def get_users(
                 init_arg_idx = custom.init_args.index(node)
                 users.append(custom.iter_args(graph)[init_arg_idx])
             else:
-                if (node not in custom.implicit_captures):
-                    breakpoint()
                 assert node in custom.implicit_captures
                 for outside_node in graph.nodes:
                     if outside_node.meta.get("lifted", None) == node:
@@ -196,7 +194,6 @@ def get_users(
             else:
                 subgraph = custom.get_root_graph().subgraphs[custom.subgraph_name]
                 var = custom.get_captured_fx_node(subgraph, node)
-                #breakpoint()
                 assert var is not None, "Invalid captured var"
                 for u in var.users:
                     users.append(u)

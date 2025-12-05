@@ -738,7 +738,6 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
     insert_vector = cast_vector(emitter, register, element_type=kb_ir_type.element_type)
     insert_type = VectorType(insert_vector.type)
     vector_shape = cast_py_literal(emitter, (elements_per_thread,))
-    element_type = kb_ir_type.element_type
 
     # TODO: Support elements_per_thread size mismatch and broadcasting
 
@@ -757,6 +756,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         cast_vector(emitter, reg, element_type=IndexType.get()) for reg in dyn_vals
     )
     dynamic_vals_map_start = _build_dyn_vals_map(mapping, dyn_vals)
+    element_type = kb_ir_type.element_type
 
     if mapping:
         transformed_index = transform_index_on_mapping(

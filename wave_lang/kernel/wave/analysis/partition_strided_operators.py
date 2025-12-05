@@ -195,10 +195,6 @@ def partition_strided_operators(trace: CapturedTrace, constraints: list[Constrai
                     custom.memory,
                     mapping=custom.mapping,
                     elements_per_thread=1,
-                    mapping_dynamic_vals=custom.mapping_dynamic_vals,
-                    bounds=custom.bounds,
-                    source=custom.source,
-                    target=custom.target,
                     volatile=custom.volatile,
                 ).add_to_graph(custom.graph, loc=custom.location)
                 write.index = {
@@ -352,9 +348,6 @@ def partition_ops_with_gpr_offsets(trace: CapturedTrace, constraints: list[Const
                         mapping=custom.mapping,
                         mapping_dynamic_vals=new_dynamic_vals,
                         elements_per_thread=gpr_size,
-                        bounds=custom.bounds,
-                        source=custom.source,
-                        target=custom.target,
                         volatile=custom.volatile,
                     ).add_to_graph(custom.graph, loc=custom.location)
                 elif isinstance(custom, Read):
@@ -478,9 +471,6 @@ def partition_gather_like_ops(
                         mapping=custom.mapping,
                         mapping_dynamic_vals=new_dynamic_vals,
                         elements_per_thread=1,
-                        bounds=custom.bounds,
-                        source=custom.source,
-                        target=custom.target,
                         volatile=custom.volatile,
                     ).add_to_graph(custom.graph, loc=custom.location)
                 elif isinstance(custom, Read):

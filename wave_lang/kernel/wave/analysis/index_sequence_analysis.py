@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Callable, Optional, Sequence
 
 import sympy
-from sympy.core.sorting import default_sort_key
 import torch.fx as fx
 
 import wave_lang.kernel.lang as tkl
@@ -256,7 +255,6 @@ def verify_nodes(trace: CapturedTrace, constraints: list[Constraint]):
                 custom.vector_shapes = {}
                 for dim in update_vector_shapes:
                     custom.vector_shapes[dim] = hw_constraint.vector_shapes[dim]
-        # breakpoint()
         assert (
             custom.vector_shapes
         ), f"Vector shapes not set for node {custom.fx_node}: {custom}"
@@ -1048,8 +1046,7 @@ def resolve_broadcasting_for_op(custom: CustomOp, operand_identifiers: list[str]
             BroadcastOperand(custom=operand_custom, dim=dim, size=size, id=identifier)
         )
 
-    # Use default_sort_key for symbolic expressions to avoid comparison errors
-    target = max(operands, key=lambda x: default_sort_key(x.size))
+    target = max(operands, key=lambda x: x.size)
 
     def generate_error_context():
         context_lines = [f"\n{type(custom).__name__.lower()}={custom}"]
