@@ -471,22 +471,43 @@ def get_streamk_gemm_kernel(
 
                 tid = tkw.scalar(THREAD_0, i32)
                 tkw.set_symbol(THREAD_ID, tid)
-                tkw.write(mac_loop, partial_buffer, mapping=partial_buffer_write_mapping)
-                curr_acc = tkw.read(partial_buffer, mapping=partial_buffer_read_mapping, elements_per_thread=16)
+                tkw.write(
+                    mac_loop, partial_buffer, mapping=partial_buffer_write_mapping
+                )
+                curr_acc = tkw.read(
+                    partial_buffer,
+                    mapping=partial_buffer_read_mapping,
+                    elements_per_thread=16,
+                )
 
                 tkw.set_symbol(OUTPUT_TILE_ITER_END, output_tile_iter_end)
-                aggregrate_partial_condition = (sympy.Lt(GET_ITER_ARG(0), OUTPUT_TILE_ITER_END)) & (CTA_ID_AXIS < NUM_CTAS)
+                aggregrate_partial_condition = (
+                    sympy.Lt(GET_ITER_ARG(0), OUTPUT_TILE_ITER_END)
+                ) & (CTA_ID_AXIS < NUM_CTAS)
 
-                @tkw.iterate(CTA_ID_AXIS, start=loop_start, condition=aggregrate_partial_condition, init_args=[new_cta_k_end, curr_acc])
+                @tkw.iterate(
+                    CTA_ID_AXIS,
+                    start=loop_start,
+                    condition=aggregrate_partial_condition,
+                    init_args=[new_cta_k_end, curr_acc],
+                )
                 def aggregate_partials_loop(new_cta_k_end, acc):
                     curr_cta = tkw.self_index(CTA_ID_AXIS, i32)
                     not_ready = tkw.scalar(0, i32)
                     condition = sympy.Eq(SPINLOCK_WAIT_FLAG, 0)
 
                     tkw.set_symbol(CTA_ID, curr_cta)
-                    @tkw.iterate(SPINLOCK_WAIT_FLAG, start=not_ready, condition=condition, init_args=[])
+
+                    @tkw.iterate(
+                        SPINLOCK_WAIT_FLAG,
+                        start=not_ready,
+                        condition=condition,
+                        init_args=[],
+                    )
                     def spinlock_wait():
-                        lock_val = tkw.read(lock_buffer, mapping=lock_buffer_read_mapping, volatile=True)
+                        lock_val = tkw.read(
+                            lock_buffer, mapping=lock_buffer_read_mapping, volatile=True
+                        )
                         one_val = Register[LOCK_DIM, f32](1.0)
                         is_ready = lock_val == one_val
                         one_int = Register[LOCK_DIM, i32](1)
@@ -494,10 +515,19 @@ def get_streamk_gemm_kernel(
                         ready_flag = tkw.select(is_ready, one_int, zero_int)
                         tkw.set_symbol(SPINLOCK_WAIT_FLAG, ready_flag)
 
-                    peer_p_reg = tkw.read(partial_buffer, mapping=partial_buffer_read_mapping, elements_per_thread=16, volatile=True)
+                    peer_p_reg = tkw.read(
+                        partial_buffer,
+                        mapping=partial_buffer_read_mapping,
+                        elements_per_thread=16,
+                        volatile=True,
+                    )
                     new_acc = acc + peer_p_reg
 
-                    new_cta_k_end += sk_iters_pcu + tkw.select(curr_cta < sk_extra_iters, tkw.scalar(1, i32), tkw.scalar(0, i32))
+                    new_cta_k_end += sk_iters_pcu + tkw.select(
+                        curr_cta < sk_extra_iters,
+                        tkw.scalar(1, i32),
+                        tkw.scalar(0, i32),
+                    )
                     next_cta_val = curr_cta + tkw.scalar(1, i32)
 
                     tkw.set_symbol(CTA_ID_AXIS, next_cta_val)
@@ -530,7 +560,8 @@ def get_streamk_gemm_kernel(
         STREAMK_EXTRA_ITERS: streamk_extra_iters,
         TOTAL_TILES: total_tiles,
         # num of streamk_tiles/data parallel tiles should be decided by a heuristic
-        # as a good ratio will improve performance in a hybrid streamk kernel
+        # as a good ratio will use data parallel as long as possible, and activate streamk when a given time step/wave of tiles needs
+        # to be split for better utilization
         STREAMK_TILES: streamk_tiles,
         DATA_PARALLEL_TILES: total_data_parallel_tiles,
     }
