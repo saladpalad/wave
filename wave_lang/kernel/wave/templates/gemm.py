@@ -235,7 +235,7 @@ def get_persistent_gemm_kernel(
     total_tiles = m_tiles * n_tiles
 
     if num_ctas is None:
-        num_ctas = 304
+        num_ctas = total_tiles
 
     # Symbols
     M = tkl.sym.M
