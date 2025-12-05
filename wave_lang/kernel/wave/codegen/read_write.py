@@ -602,13 +602,11 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, input_shape, index, is_read=True
         )
-
-        has_offset = bounds and any(
+        has_symbol_offset = bounds and not mapping.dynamic_val_indices and any(
             mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
             for dim in bounds
-            if dim in mapping.input_mapping and dim in mapping.output_mapping
         )
-        if has_offset:
+        if has_symbol_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
@@ -691,14 +689,11 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         transformed_index = transform_index_on_mapping(
             mapping, output_shape, index, is_read=False
         )
-
-        # Use transformed_index for mask if mapping adds offsets to bounded dimensions
-        has_offset = bounds and any(
+        has_symbol_offset = bounds and not mapping.dynamic_val_indices and any(
             mapping.input_mapping.get(dim) != mapping.output_mapping.get(dim)
             for dim in bounds
-            if dim in mapping.input_mapping and dim in mapping.output_mapping
         )
-        if has_offset:
+        if has_symbol_offset:
             mask = _build_mask(
                 emitter,
                 transformed_index,
