@@ -213,7 +213,7 @@ def get_persistent_gemm_kernel(
     mfma_variant: MMAType,
     threads_per_wave: int = 64,
     block_shape: Optional[tuple[int, int, int]] = None,
-    waves_per_block: Optional[tuple[int, int, int]] = None,
+    waves_per_block: Optional[tuple[int, int]] = None,
     num_ctas: Optional[int] = None,
 ):
     """
@@ -221,6 +221,11 @@ def get_persistent_gemm_kernel(
     with linearized CTA dims. Each CTA iterates over multiple output tiles.
 
     """
+    if not block_shape:
+        block_shape = (128, 256, 64)
+
+    if not waves_per_block:
+        waves_per_block = (4, 1)
 
     m, n, k = shape
     block_m, block_n, block_k = block_shape

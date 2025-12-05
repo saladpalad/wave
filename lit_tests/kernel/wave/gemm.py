@@ -2332,7 +2332,7 @@ def test_persistent_gemm():
         mfma_variant=tkw.MMAType.F32_16x16x16_F16,
         threads_per_wave=64,
         block_shape=(128, 256, 64),
-        waves_per_block=(4, 1, 1),
+        waves_per_block=(4, 1),
     )
 
     options = WaveCompileOptions(

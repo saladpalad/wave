@@ -2807,15 +2807,15 @@ def test_explicit_shared_gemm(m, n, k, block_m, block_n, block_k, run_bench):
 @pytest.mark.parametrize(
     "waves_per_block",
     [
-        (4, 1, 1),
-        (2, 2, 1),
+        (4, 1),
+        (2, 2),
     ],
 )
 def test_persistent_gemm(
     shape: tuple[int],
     mfma_variant: MMAType,
     threads_per_wave: int,
-    waves_per_block: tuple[int, int, int],
+    waves_per_block: tuple[int, int],
 ):
     persistent_gemm, hyperparams = get_persistent_gemm_kernel(
         shape=shape,
