@@ -100,7 +100,10 @@ def get_dim_scaling(
             wave_count = 1
             if isinstance(constraint, WorkgroupConstraint):
                 for wave_constraint in constraints:
-                    if isinstance(wave_constraint, WaveConstraint) and wave_constraint.dim == constraint.dim:
+                    if (
+                        isinstance(wave_constraint, WaveConstraint)
+                        and wave_constraint.dim == constraint.dim
+                    ):
                         wave_count = wave_constraint.waves_per_block
                         break
                 else:
