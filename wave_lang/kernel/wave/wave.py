@@ -521,7 +521,6 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-        use_linearized_dims = hardware_constraint.use_linearized_dims is True
 
         for wave_constraint in self.wave_constraints:
             for workgroup_constraint in self.workgroup_constraints:
@@ -529,15 +528,13 @@ class LaunchableWave(Launchable):
                     wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
                         hardware_constraint,
                         workgroup_constraint,
-                        use_linearized_dims,
                     )
 
         if hardware_constraint.waves_per_block is None:
             waves_per_block = [1, 1, 1]
-            for i, wave_constraint in enumerate(self.wave_constraints):
+            for wave_constraint in self.wave_constraints:
                 count = subs_idxc(wave_constraint.waves_per_block)
-                dim = i if use_linearized_dims else wave_constraint.workgroup_dim
-                waves_per_block[dim] = count
+                waves_per_block[wave_constraint.workgroup_dim] = count
 
             hardware_constraint.waves_per_block = tuple(waves_per_block)
 

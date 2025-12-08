@@ -277,23 +277,17 @@ def get_persistent_gemm_kernel(
     constraints = [
         tkw.GridConstraint(NUM_CTAS),
         tkw.WorkgroupConstraint(M, BLOCK_M, 0),
-        tkw.WorkgroupConstraint(N, BLOCK_N, 0, primary=False),
+        tkw.WorkgroupConstraint(N, BLOCK_N, 1),
         tkw.TilingConstraint(K, BLOCK_K),
         tkw.TilingConstraint(TILE_IDX),
-    ]
-
-    constraints.append(tkw.WaveConstraint(M, BLOCK_M / waves_per_block[0]))
-    if waves_per_block[1] > 1:
-        constraints.append(tkw.WaveConstraint(N, BLOCK_N / waves_per_block[1]))
-
-    constraints.append(
+        tkw.WaveConstraint(M, BLOCK_M / waves_per_block[0]),
+        tkw.WaveConstraint(N, BLOCK_N / waves_per_block[1]),
         tkw.HardwareConstraint(
             threads_per_wave=threads_per_wave,
             mma_type=mfma_variant,
             vector_shapes={TILE_IDX: 0},
-            use_linearized_dims=True,
         ),
-    )
+    ]
 
     @tkw.wave(constraints)
     def persistent_gemm(
