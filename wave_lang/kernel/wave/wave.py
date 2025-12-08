@@ -521,13 +521,11 @@ class LaunchableWave(Launchable):
 
         self._validate_constraints()
         hardware_constraint = self.hardware_constraints[0]
-
         for wave_constraint in self.wave_constraints:
             for workgroup_constraint in self.workgroup_constraints:
                 if wave_constraint.dim == workgroup_constraint.dim:
                     wave_constraint.set_wave_id_from_hardware_and_workgroup_constraint(
-                        hardware_constraint,
-                        workgroup_constraint,
+                        hardware_constraint, workgroup_constraint
                     )
 
         if hardware_constraint.waves_per_block is None:

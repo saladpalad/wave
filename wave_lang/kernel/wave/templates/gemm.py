@@ -213,7 +213,7 @@ def get_persistent_gemm_kernel(
     mfma_variant: MMAType,
     threads_per_wave: int = 64,
     block_shape: Optional[tuple[int, int, int]] = None,
-    waves_per_block: Optional[tuple[int, int]] = None,
+    waves_per_block: Optional[tuple[int, int, int]] = None,
     num_ctas: Optional[int] = None,
 ):
     """

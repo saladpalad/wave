@@ -805,8 +805,6 @@ class WaveConstraint(DistributionConstraint):
     wave_id_1 = thread_id_1
     wave_id_2 = thread_id_2
 
-    When linearized_cta_dims is True, the number of threads per block is
-    [wave_id * threads_per_wave, 1, 1]
     """
 
     dim: IndexExpr
@@ -826,23 +824,18 @@ class WaveConstraint(DistributionConstraint):
     ):
         """
         The wave_id is the same as the thread_id, with the exception of
-        wave_id[0] = thread_id[0] / threads_per_wave
+          wave_id[0] = thread_id[0] / threads_per_wave
         This is a convention that we adopt.
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
-
         self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
             workgroup_constraint.workgroup_dim
         )
-
         # Only handling the wg_dim_0 case because Wave assumes
         # all threads in a wave are handled in wg_dim_0.
         if workgroup_constraint.workgroup_dim == 0:
-            self.wave_id = floor(
-                self.wave_id / hardware_constraint.threads_per_wave
-            )
-
+            self.wave_id = floor(self.wave_id / hardware_constraint.threads_per_wave)
         assert (
             old_wave_id is None or self.wave_id == old_wave_id
         ), f"Conflicting preset wave_id old: {old_wave_id} new: {self.wave_id}"
