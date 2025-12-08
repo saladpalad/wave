@@ -72,7 +72,7 @@ jobs:
         run: |
           # Install TheRock
           sudo apt-get update
-          sudo apt install -y gfortran build-essential binutils
+          sudo apt install -y gfortran build-essential binutils dwarfdump
           python -m pip install \
             --index-url https://d2awnip2yjpvqn.cloudfront.net/v2/gfx950-dcgpu/ \
             rocm[libraries,devel]
@@ -117,4 +117,4 @@ jobs:
       - name: Run LIT tests
         if: ${{ !cancelled() }}
         run: |
-          lit lit_tests/ -v
+          WAVE_TEST_DWARFDUMP=1 lit lit_tests/ -v
