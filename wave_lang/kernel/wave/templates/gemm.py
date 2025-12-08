@@ -228,6 +228,8 @@ def get_persistent_gemm_kernel(
         waves_per_block = (4, 1)
 
     m, n, k = shape
+    # note: block_m must equal 128, since it matches with number threads along the cta dim i.e. (128, 2, 1)
+    # this is because in when reading from partial_buffer, 1 thread is responsible for one row (so 128 threads to load 128 rows)
     block_m, block_n, block_k = block_shape
 
     m_tiles = (m + block_m - 1) // block_m
