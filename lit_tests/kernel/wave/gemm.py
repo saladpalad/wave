@@ -2349,9 +2349,9 @@ def test_persistent_gemm():
     # CHECK-SAME:       (%[[ARG0:[a-zA-Z0-9_]+]]: !stream.binding, %[[ARG1:[a-zA-Z0-9_]+]]: !stream.binding,
     # CHECK-SAME:       %[[ARG2:[a-zA-Z0-9_]+]]: !stream.binding) attributes {translation_info = #[[TRANSLATION]]} {
 
-    # CHECK-DAG:       %[[C128_I32:.+]] = arith.constant 128 : i32
+    # CHECK-DAG:       %[[C304_I32:.+]] = arith.constant 304 : i32
     # CHECK-DAG:       %[[C128:.+]] = arith.constant 128 : index
-    # CHECK:           %[[BLOCK_ID_X:.+]] = gpu.block_id  x upper_bound 128
+    # CHECK:           %[[BLOCK_ID_X:.+]] = gpu.block_id  x upper_bound 304
 
     # Persistent loop
     # CHECK:           %{{.*}} = scf.while (%[[ARG3:.+]] = %[[BLOCK_ID_X]]) : (index) -> index {
@@ -2361,7 +2361,7 @@ def test_persistent_gemm():
     # CHECK:             %{{.*}} = arith.index_cast %[[ARG3]] : index to i32
 
     # Advance to next tile
-    # CHECK:             %{{.*}} = arith.addi %{{.*}}, %[[C128_I32]] : i32
+    # CHECK:             %{{.*}} = arith.addi %{{.*}}, %[[C304_I32]] : i32
     # CHECK:             %{{.*}} = arith.index_cast %{{.*}} : i32 to index
     # CHECK:             scf.yield %{{.*}} : index
     # CHECK:           }
