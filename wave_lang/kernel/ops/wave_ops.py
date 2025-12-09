@@ -1208,6 +1208,7 @@ class SelectOp(CustomOp):
         else:
             self.type = Register[broadcasted_shape, if_true_type.dtype]
 
+
 @final
 @dataclass
 class Unknown(CustomOp):
