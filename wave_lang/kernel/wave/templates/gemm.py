@@ -440,27 +440,27 @@ def get_persistent_reordering_kernel(
         b: tkl.Memory[N, K, ADDRESS_SPACE, tkl.f16],
         c: tkl.Memory[M, N, GLOBAL_ADDRESS_SPACE, tkl.f32],
     ):
-        pid = tkw.scalar(WORKGROUP_0, tkl.i32)
+        cta = tkw.scalar(WORKGROUP_0, tkl.i32)
 
         # XCD Swizzling (LLC/MALL Cache)
-        # Compute remapped pid for chunked region
-        xcd_id = pid % tkw.scalar(NUM_XCDS, tkl.i32)
-        local_pid = pid // tkw.scalar(NUM_XCDS, tkl.i32)
-        chunk_idx = local_pid // tkw.scalar(CHUNK_SIZE, tkl.i32)
-        pos_in_chunk = local_pid % tkw.scalar(CHUNK_SIZE, tkl.i32)
-        remapped_pid = (
+        # Compute remapped cta for chunked region
+        xcd_id = cta % tkw.scalar(NUM_XCDS, tkl.i32)
+        local_cta = cta // tkw.scalar(NUM_XCDS, tkl.i32)
+        chunk_idx = local_cta // tkw.scalar(CHUNK_SIZE, tkl.i32)
+        pos_in_chunk = local_cta % tkw.scalar(CHUNK_SIZE, tkl.i32)
+        remapped_cta = (
             chunk_idx * tkw.scalar(NUM_XCDS, tkl.i32) * tkw.scalar(CHUNK_SIZE, tkl.i32)
             + xcd_id * tkw.scalar(CHUNK_SIZE, tkl.i32)
             + pos_in_chunk
         )
 
-        # Select: use remapped_pid if in chunked region, else use original pid
+        # Select: use remapped_cta if in chunked region, else use original cta
         chunked_threshold = (
             tkw.scalar(TOTAL_TILES, tkl.i32)
             // (tkw.scalar(NUM_XCDS, tkl.i32) * tkw.scalar(CHUNK_SIZE, tkl.i32))
         ) * (tkw.scalar(NUM_XCDS, tkl.i32) * tkw.scalar(CHUNK_SIZE, tkl.i32))
-        in_chunked_region = pid <= chunked_threshold
-        init_tile_id = tkw.select(in_chunked_region, remapped_pid, pid)
+        in_chunked_region = cta <= chunked_threshold
+        init_tile_id = tkw.select(in_chunked_region, remapped_cta, cta)
 
         condition = TILE_IDX < TOTAL_TILES
 

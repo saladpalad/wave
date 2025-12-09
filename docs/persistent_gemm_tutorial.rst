@@ -261,16 +261,16 @@ This default scheduling scatters related workgroups across different XCDs, preve
         b: Memory[N, K, ADDRESS_SPACE, f16],
         c: Memory[M, N, GLOBAL_ADDRESS_SPACE, f32],
     ):
-        pid = tkw.scalar(WORKGROUP_0, i32)
+        cta = tkw.scalar(WORKGROUP_0, i32)
 
         # XCD Swizzling: remap workgroup ID for better LLC locality
-        xcd_id = pid % tkw.scalar(NUM_XCDS, i32)
-        local_pid = pid // tkw.scalar(NUM_XCDS, i32)
-        chunk_idx = local_pid // tkw.scalar(CHUNK_SIZE, i32)
-        pos_in_chunk = local_pid % tkw.scalar(CHUNK_SIZE, i32)
+        xcd_id = cta % tkw.scalar(NUM_XCDS, i32)
+        local_cta = cta // tkw.scalar(NUM_XCDS, i32)
+        chunk_idx = local_cta // tkw.scalar(CHUNK_SIZE, i32)
+        pos_in_chunk = local_cta % tkw.scalar(CHUNK_SIZE, i32)
 
         # Reorder so consecutive chunks go to the same XCD
-        remapped_pid = (chunk_idx * tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)
+        remapped_cta = (chunk_idx * tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)
                        + xcd_id * tkw.scalar(CHUNK_SIZE, i32)
                        + pos_in_chunk)
 
@@ -278,8 +278,8 @@ This default scheduling scatters related workgroups across different XCDs, preve
         chunked_threshold = ((tkw.scalar(TOTAL_TILES, i32)
                              // (tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)))
                             * (tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)))
-        in_chunked_region = pid <= chunked_threshold
-        init_tile_id = tkw.select(in_chunked_region, remapped_pid, pid)
+        in_chunked_region = cta <= chunked_threshold
+        init_tile_id = tkw.select(in_chunked_region, remapped_cta, cta)
 
         @tkw.iterate(TILE_IDX, start=init_tile_id, condition=condition, init_args=[])
         def persistent_loop():
@@ -399,22 +399,22 @@ Here is the complete persistent GEMM kernel combining both L2 and XCD swizzling:
         b: Memory[N, K, ADDRESS_SPACE, f16],
         c: Memory[M, N, GLOBAL_ADDRESS_SPACE, f32],
     ):
-        pid = tkw.scalar(WORKGROUP_0, i32)
+        cta = tkw.scalar(WORKGROUP_0, i32)
 
         # XCD Swizzling (LLC/MALL Cache)
-        xcd_id = pid % tkw.scalar(NUM_XCDS, i32)
-        local_pid = pid // tkw.scalar(NUM_XCDS, i32)
-        chunk_idx = local_pid // tkw.scalar(CHUNK_SIZE, i32)
-        pos_in_chunk = local_pid % tkw.scalar(CHUNK_SIZE, i32)
-        remapped_pid = (chunk_idx * tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)
+        xcd_id = cta % tkw.scalar(NUM_XCDS, i32)
+        local_cta = cta // tkw.scalar(NUM_XCDS, i32)
+        chunk_idx = local_cta // tkw.scalar(CHUNK_SIZE, i32)
+        pos_in_chunk = local_cta % tkw.scalar(CHUNK_SIZE, i32)
+        remapped_cta = (chunk_idx * tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)
                        + xcd_id * tkw.scalar(CHUNK_SIZE, i32) + pos_in_chunk)
 
-        # Select: use remapped_pid if in chunked region, else use original pid
+        # Select: use remapped_cta if in chunked region, else use original cta
         chunked_threshold = ((tkw.scalar(TOTAL_TILES, i32)
                              // (tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)))
                             * (tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)))
-        in_chunked_region = pid <= chunked_threshold
-        init_tile_id = tkw.select(in_chunked_region, remapped_pid, pid)
+        in_chunked_region = cta <= chunked_threshold
+        init_tile_id = tkw.select(in_chunked_region, remapped_cta, cta)
 
         condition = TILE_IDX < TOTAL_TILES
 
