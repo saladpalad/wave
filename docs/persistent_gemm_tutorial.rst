@@ -33,7 +33,7 @@ Let's build a persistent GEMM kernel step by step.
 Step 1: Imports and Symbols
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Beyond the standard GEMM symbols, we need additional symbols for persistence:
+Beyond the standard GEMM symbols, let's define additional symbols for persistence:
 
 .. code-block:: python
 
