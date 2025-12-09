@@ -691,9 +691,7 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        result = llvm_d.LoadOp(
-            vector_type, llvm_ptr, volatile_=True, nontemporal=True
-        ).result
+        result = llvm_d.LoadOp(vector_type, llvm_ptr, volatile_=True).result
     elif read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
@@ -805,7 +803,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
 
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        llvm_d.StoreOp(insert_vector, llvm_ptr, volatile_=True, nontemporal=True)
+        llvm_d.StoreOp(insert_vector, llvm_ptr, volatile_=True)
     else:
         _create_vec_read_write(
             emitter,
