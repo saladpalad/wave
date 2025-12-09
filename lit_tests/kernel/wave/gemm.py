@@ -2402,6 +2402,6 @@ def test_streamk_gemm():
     # CHECK:           } do {
     # CHECK:             scf.for %{{.+}} = %{{.+}} to %{{.+}} step %{{.+}} iter_args({{.+}}) -> (vector<4xf32>
 
-    # CHECK:           llvm.store volatile %{{.+}}, %{{.+}} {nontemporal} : vector<1xf32>, !llvm.ptr
+    # CHECK:           llvm.store volatile %{{.+}}, %{{.+}} : vector<1xf32>, !llvm.ptr
 
-    # CHECK:           llvm.load volatile %{{.+}} {nontemporal} : !llvm.ptr -> vector<1xf32>
+    # CHECK:           llvm.load volatile %{{.+}} : !llvm.ptr -> vector<1xf32>
