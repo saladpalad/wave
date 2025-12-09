@@ -24,7 +24,6 @@ Benefits of Persistence
 
 1. **Reduced Launch Overhead**: Fewer workgroups to schedule
 2. **Improve Occupancy Control**: Match workgroups to hardware compute units with less hardware divergence
-3. **Enables Advanced Scheduling**: Custom tile ordering for cache optimization
 
 Implementation
 --------------
@@ -98,7 +97,8 @@ Since each workgroup processes multiple tiles, we need to manually control memor
         outputs={M: i + CTA_M_OFFSET, N: j + CTA_N_OFFSET},
     )
 
-The ``inputs`` specify the source coordinates in memory, while ``outputs`` specify the logical coordinates in registers. The offset symbols (``CTA_M_OFFSET``, ``CTA_N_OFFSET``) are set dynamically during execution.
+The ``inputs`` specify the source coordinates in memory, while ``outputs`` specify the logical coordinates of the section in memory we want to return.
+The offset symbols (``CTA_M_OFFSET``, ``CTA_N_OFFSET``) are set dynamically during execution.
 
 Step 3: Constraints with GridConstraint
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -310,7 +310,7 @@ For optimal performance on the MI300 series, combine both optimizations:
 1. **XCD Swizzling** (at kernel launch): Remaps ``init_tile_id`` so nearby tiles run on the same XCD
 2. **L2 Swizzling** (inside the loop): Converts ``tile_id`` to 2D coordinates that maximize L2 locality
 
-This two-level approach optimizes for both the per-XCD LLC and the shared L2 cache.
+This approach optimizes for both the LLC and L2 cache.
 
 Full Kernel with Both Optimizations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
