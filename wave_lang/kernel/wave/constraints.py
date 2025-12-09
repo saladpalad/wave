@@ -781,41 +781,28 @@ class TilingConstraint(DistributionConstraint):
 @dataclass
 class WaveConstraint(DistributionConstraint):
     """
-        A constraint of the form `tkw.WaveConstraint(K, WAVE_K)` specifies
-        that we want distribute the K dimension among multiple waves which
-        each wave operating on a tile size of WAVE_K. The assumption is
-        that the K dimension has already been distributed among workgroups.
-        If the K dimension has been distributed among workgroups with a
-        tile size of BLOCK_K, then the number of waves along the K dimension
-        is given by BLOCK_K // WAVE_K.
+    A constraint of the form `tkw.WaveConstraint(K, WAVE_K)` specifies
+    that we want distribute the K dimension among multiple waves which
+    each wave operating on a tile size of WAVE_K. The assumption is
+    that the K dimension has already been distributed among workgroups.
+    If the K dimension has been distributed among workgroups with a
+    tile size of BLOCK_K, then the number of waves along the K dimension
+    is given by BLOCK_K // WAVE_K.
+    This constraint adds an index constraint to the K-th dimension of a
+    a tensor of the form WAVE_K * wave_id. The index of the wave
+    is determined by the following mapping:
+    workgroup id 0 -> wave/thread id x
+    workgroup id 1 -> wave/thread id y
+    workgroup id 2 -> wave/thread id z
+    (If the tensor dimension has been distributed along workgroup dimension
+    {0, 1, 2}, then the corresponding thread id is {x, y, z}).
+    Because we represent the number of threads per block as
+    [wave_id_0 * threads_per_wave, wave_id_1, wave_id_2], special care is
+    required when computing wave_id_0. Specifically,
+    wave_id_0 = floor(thread_id_0 / threads_per_wave)
+    wave_id_1 = thread_id_1
+    wave_id_2 = thread_id_2
 
-        This constraint adds an index constraint to the K-th dimension of a
-        a tensor of the form WAVE_K * wave_id. The index of the wave
-        is determined by the following mapping:
-        workgroup id 0 -> wave/thread id x
-        workgroup id 1 -> wave/thread id y
-        workgroup id 2 -> wave/thread id z
-        (If the tensor dimension has been distributed along workgroup dimension
-        {0, 1, 2}, then the corresponding thread id is {x, y, z}).
-
-        Because we represent the number of threads per block as
-        [wave_id_0 * threads_per_wave, wave_id_1, wave_id_2], special care is
-        required when computing wave_id_0. Specifically,
-        wave_id_0 = floor(thread_id_0 / threads_per_wave)
-        wave_id_1 = thread_id_1
-        wave_id_2 = thread_id_2
-    <<<<<<< HEAD
-
-    <<<<<<< HEAD
-    <<<<<<< HEAD
-    =======
-        When linearized_cta_dims is True, the number of threads per block is
-        [wave_id * threads_per_wave, 1, 1]
-    >>>>>>> 37507f4c (before)
-    =======
-    >>>>>>> 18a11eb3 (cleanup debugging)
-    =======
-    >>>>>>> 9babe603 (update template)
     """
 
     dim: IndexExpr
@@ -840,7 +827,6 @@ class WaveConstraint(DistributionConstraint):
         """
         old_wave_id = self.wave_id
         assert self.dim == workgroup_constraint.dim, "Dimension mismatch"
-
         self.wave_id = hardware_constraint.get_thread_id_from_workgroup_dim(
             workgroup_constraint.workgroup_dim
         )
