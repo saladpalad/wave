@@ -215,9 +215,6 @@ Row-major tile ordering isn't optimal for L2 cache utilization. Adjacent tiles i
     GROUP_SIZE_M = sym.GROUP_SIZE_M
     NUM_CTAS_IN_GROUP = sym.NUM_CTAS_IN_GROUP
 
-    # Inside persistent_loop, replace the simple offset calculation with:
-    tile_id = tkw.self_index(TILE_IDX, tkl.i32)
-
     # Group tiles for L2 locality
     group_id = tile_id // tkw.scalar(NUM_CTAS_IN_GROUP, i32)
     first_cta_m = group_id * tkw.scalar(GROUP_SIZE_M, i32)
@@ -238,7 +235,7 @@ This groups tiles into rectangular regions (GROUP_SIZE_M x N_TILES), improving s
 XCD Swizzling (LLC/MALL Cache)
 ------------------------------
 
-The AMD MI300 series features a chiplet architecture with multiple XCDs (Accelerated Compute Dies), each with its own Last Level Cache (LLC), also known as the MALL (Memory Attached Last Level) cache.
+The AMD MI300 series features a chiplet architecture with multiple XCDs (Accelerated Compute Dies), and the Last Level Cache (LLC), also known as the MALL (Memory Attached Last Level) cache.
 
 By default, the hardware assigns workgroups to XCDs in a round-robin fashion:
 
@@ -283,9 +280,6 @@ This default scheduling scatters related workgroups across different XCDs, preve
                             * (tkw.scalar(NUM_XCDS, i32) * tkw.scalar(CHUNK_SIZE, i32)))
         in_chunked_region = pid <= chunked_threshold
         init_tile_id = tkw.select(in_chunked_region, remapped_pid, pid)
-
-        # Rest of kernel uses init_tile_id instead of raw workgroup ID
-        condition = TILE_IDX < TOTAL_TILES
 
         @tkw.iterate(TILE_IDX, start=init_tile_id, condition=condition, init_args=[])
         def persistent_loop():
@@ -528,23 +522,6 @@ Let's create a test function to verify our persistent GEMM implementation:
 
         print("Persistent GEMM test passed!")
 
-Comparison: Vanilla vs Persistent GEMM
---------------------------------------
-
-+------------------------+------------------+--------------------+
-| Aspect                 | Vanilla GEMM     | Persistent GEMM    |
-+========================+==================+====================+
-| Workgroups launched    | total_tiles      | num_ctas (fixed)   |
-+------------------------+------------------+--------------------+
-| Tile assignment        | Static (1:1)     | Dynamic (loop)     |
-+------------------------+------------------+--------------------+
-| Index computation      | Automatic        | Manual (mappings)  |
-+------------------------+------------------+--------------------+
-| Tile ordering          | Fixed            | Customizable       |
-+------------------------+------------------+--------------------+
-| Stream-K ready         | No               | Yes                |
-+------------------------+------------------+--------------------+
-
 Key Takeaways
 -------------
 
@@ -552,5 +529,4 @@ Key Takeaways
 2. **IndexMapping** enables manual offset control for dynamic tile assignment
 3. **set_symbol** updates offset symbols during the persistent loop
 4. **self_index** retrieves the current iteration value
-5. The outer loop uses ``condition`` to terminate when all tiles are processed
-6. Tiles are distributed with stride ``NUM_CTAS`` for even load balancing
+5. The outer loop sets a **start** and **condition** to setup the tile distribution for a single CTA
