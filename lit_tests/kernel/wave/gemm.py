@@ -14,7 +14,7 @@ from wave_lang.kernel.wave.templates.gemm import (
     get_gemm_kernel,
     get_gemm_kernel_transpose_a_b,
     get_persistent_gemm_kernel,
-    get_streamk_gemm_kernel
+    get_streamk_gemm_kernel,
 )
 
 M = tkl.sym.M
