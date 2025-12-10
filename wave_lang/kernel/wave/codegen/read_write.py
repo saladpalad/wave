@@ -408,6 +408,56 @@ def _cast_buffer_and_encode_stride(
     return ptr
 
 
+def _create_llvm_read_write(
+    kb_mem: Value,
+    kb_ir_type: MemRefType,
+    start_indices: tuple[Value],
+    vector_type: VectorType,
+    flags: MemoryAccessFlags,
+    value: Optional[Value] = None,
+) -> Optional[Value]:
+    is_read = value is None
+    element_type = vector_type.element_type
+
+    ptr = memref_d.extract_aligned_pointer_as_index(kb_mem)
+    strides, _ = kb_ir_type.get_strides_and_offset()
+    offset = arith_d.constant(IndexType.get(), 0)
+    elem_size_bytes = element_type.width // 8
+
+    for idx, stride in zip(start_indices, strides):
+        if not IndexType.isinstance(idx.type):
+            idx = arith_d.index_cast(IndexType.get(), idx)
+        stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
+        stride_offset = arith_d.muli(idx, stride_val)
+        offset = arith_d.addi(offset, stride_offset)
+
+    final_ptr_index = arith_d.addi(ptr, offset)
+    i64 = IntegerType.get_signless(64)
+    final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
+
+    llvm_ptr_type = llvm_d.PointerType.get()
+    llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
+
+    volatile_ = bool(flags & MemoryAccessFlags.VOLATILE)
+    nontemporal = bool(flags & MemoryAccessFlags.NONTEMPORAL)
+
+    if is_read:
+        return llvm_d.LoadOp(
+            vector_type,
+            llvm_ptr,
+            volatile_=volatile_,
+            nontemporal=nontemporal,
+        ).result
+    else:
+        llvm_d.StoreOp(
+            value,
+            llvm_ptr,
+            volatile_=volatile_,
+            nontemporal=nontemporal,
+        )
+        return None
+
+
 def _create_vec_read_write(
     emitter: WaveEmitter,
     symbolic_shape: tuple[IndexExpr, ...],
@@ -669,28 +719,9 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 
     use_llvm_load = flags != MemoryAccessFlags.NONE
     if use_llvm_load:
-        ptr = memref_d.extract_aligned_pointer_as_index(kb_src)
-        strides, _ = kb_ir_type.get_strides_and_offset()
-        offset = arith_d.constant(IndexType.get(), 0)
-        elem_size_bytes = element_type.width // 8
-
-        for idx, stride in zip(start_indices, strides):
-            stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
-            stride_offset = arith_d.muli(idx, stride_val)
-            offset = arith_d.addi(offset, stride_offset)
-
-        final_ptr_index = arith_d.addi(ptr, offset)
-        i64 = IntegerType.get_signless(64)
-        final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
-
-        llvm_ptr_type = llvm_d.PointerType.get()
-        llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        result = llvm_d.LoadOp(
-            vector_type,
-            llvm_ptr,
-            volatile_=bool(flags & MemoryAccessFlags.VOLATILE),
-            nontemporal=bool(flags & MemoryAccessFlags.NONTEMPORAL),
-        ).result
+        result = _create_llvm_read_write(
+            kb_src, kb_ir_type, start_indices, vector_type, flags
+        )
     elif read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
@@ -779,29 +810,8 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
 
     use_llvm_store = flags != MemoryAccessFlags.NONE
     if use_llvm_store:
-        ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
-        strides, _ = kb_ir_type.get_strides_and_offset()
-        offset = arith_d.constant(IndexType.get(), 0)
-        elem_size_bytes = element_type.width // 8
-
-        for idx, stride in zip(start_indices, strides):
-            if not IndexType.isinstance(idx.type):
-                idx = arith_d.index_cast(IndexType.get(), idx)
-            stride_val = arith_d.constant(IndexType.get(), stride * elem_size_bytes)
-            stride_offset = arith_d.muli(idx, stride_val)
-            offset = arith_d.addi(offset, stride_offset)
-
-        final_ptr_index = arith_d.addi(ptr, offset)
-        i64 = IntegerType.get_signless(64)
-        final_ptr_i64 = arith_d.index_cast(i64, final_ptr_index)
-
-        llvm_ptr_type = llvm_d.PointerType.get()
-        llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        llvm_d.StoreOp(
-            insert_vector,
-            llvm_ptr,
-            volatile_=bool(flags & MemoryAccessFlags.VOLATILE),
-            nontemporal=bool(flags & MemoryAccessFlags.NONTEMPORAL),
+        _create_llvm_read_write(
+            kb_dest, kb_ir_type, start_indices, insert_type, flags, insert_vector
         )
     else:
         _create_vec_read_write(
