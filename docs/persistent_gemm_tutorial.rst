@@ -307,8 +307,8 @@ Combining L2 and XCD Swizzling
 
 For optimal performance on the MI300 series, combine both optimizations:
 
-1. **XCD Swizzling** (at kernel launch): Remaps ``init_tile_id`` so nearby tiles run on the same XCD
-2. **L2 Swizzling** (inside the loop): Converts ``tile_id`` to 2D coordinates that maximize L2 locality
+1. **XCD Swizzling**: Remaps ``init_tile_id`` so nearby tiles run on the same XCD
+2. **L2 Swizzling**: Converts ``tile_id`` to 2D coordinates that maximize L2 locality
 
 This approach optimizes for both the LLC and L2 cache.
 
