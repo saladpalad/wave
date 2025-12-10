@@ -352,6 +352,12 @@ def get_streamk_gemm_kernel(
     Creates a Stream-K GEMM kernel that distributes work more evenly across CTAs.
     Partitions work at the granularity of K-loop iterations
     Spinlock approach
+
+    references used:
+    https://github.com/ROCm/tritonBLAS/blob/main/include/tritonblas/kernels/streamk_gemm.py
+    https://arxiv.org/abs/2301.03598
+    https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/
+
     """
     import sympy
     from wave_lang.kernel._support.indexing import sym
@@ -507,6 +513,7 @@ def get_streamk_gemm_kernel(
                 WORK_UNIT_START: 0,
                 SPINLOCK_WAIT_FLAG: 0,
                 CTA_ID_AXIS: 0,
+                # M,N have to be 16 to match w/ the mfma variant where M=16,N=16 in F32_16x16x16_F16
                 M: 16,
                 N: 16,
             },
@@ -635,6 +642,7 @@ def get_streamk_gemm_kernel(
                 # Ideally everything should be kept in registers
                 # i.e. simply do mac_loop + peer_p_reg
                 # will also allow partial buffer and lock buffer to be of shape (NUM_CTAS,) rather than (NUM_CTAS*STREAMK_TILES,)
+                # also reduction CTA should never write to global or else it will overwrite its data, my workaround solves this issue, but problems arise with hybrid
                 tkw.write(
                     mac_loop, partial_buffer, mapping=partial_buffer_write_mapping
                 )
@@ -734,9 +742,9 @@ def get_streamk_gemm_kernel(
         TOTAL_TILES: total_tiles,
         # num of streamk_tiles/data parallel tiles should be decided by a heuristic
         # as a good ratio will use data parallel as long as possible, and activate streamk when a given time step/wave of tiles needs
-        # to be split for better utilization
-        STREAMK_TILES: streamk_tiles,
-        DATA_PARALLEL_TILES: total_data_parallel_tiles,
+        # to be split for better utilization (hipblas/triton blas use origami as their heuristic)
+        STREAMK_TILES: streamk_tiles, # 100%
+        DATA_PARALLEL_TILES: total_data_parallel_tiles, # 0 % right now for pure streamk
     }
 
     return streamk_gemm, hyperparams
