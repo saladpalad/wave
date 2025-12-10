@@ -60,12 +60,6 @@ class MemoryAccessFlags(IntFlag):
     VOLATILE = auto()
     NONTEMPORAL = auto()
 
-    def __repr__(self) -> str:
-        # Ensure consistent representation across Python versions
-        if self._value_ == 0:
-            return "MemoryAccessFlags.NONE"
-        return super().__repr__()
-
 
 def read_meets_hw_transpose_requirements(
     read: Read, constraints: list[Constraint], target: str

@@ -667,7 +667,6 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    # Check if any flags are set that require LLVM load
     use_llvm_load = flags != MemoryAccessFlags.NONE
     if use_llvm_load:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_src)
@@ -778,7 +777,6 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    # Check if any flags are set that require LLVM store
     use_llvm_store = flags != MemoryAccessFlags.NONE
     if use_llvm_store:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
