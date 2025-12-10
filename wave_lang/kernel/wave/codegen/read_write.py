@@ -623,9 +623,7 @@ def _build_mask_with_mapping(
 def handle_read(emitter: WaveEmitter, node: fx.Node):
     # This is similar to tkl.store with fixed start indices for now.
     try:
-        memory, elements_per_thread, mapping, dyn_vals, bounds, flags, *rest = (
-            node.args
-        )
+        memory, elements_per_thread, mapping, dyn_vals, bounds, flags, *rest = node.args
     except ValueError as e:
         raise ValidationError("Malformed arguments") from e
 

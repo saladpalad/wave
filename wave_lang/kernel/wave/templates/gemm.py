@@ -373,7 +373,7 @@ def get_streamk_gemm_kernel(
     if num_ctas is None:
         num_ctas = 304  # TODO: Should be decided by a heuristic
 
-    # each output tile is either split or not 
+    # each output tile is either split or not
     # if its split it will be a streamk tile
     # if its not it will be a data parallel tile
     # if you split a tile some ctas will get extra iterations if the total amount of iterations is not evenly distributed
@@ -531,10 +531,14 @@ def get_streamk_gemm_kernel(
         # StreamK part
         cta_id = tkw.scalar(WORKGROUP_0, i32)
         tkw.set_symbol(CTA_ID, cta_id)
-        iters_per_output_tile = tkw.scalar(ITERS_PER_OUTPUT_TILE, i32) 
+        iters_per_output_tile = tkw.scalar(ITERS_PER_OUTPUT_TILE, i32)
         total_full_tiles = tkw.scalar(DATA_PARALLEL_TILES, i32)
-        sk_iters_pcu = tkw.scalar(STREAMK_ITERS_PCU, i32) # number of streamk iterations a compute unit is responsible
-        sk_extra_iters = tkw.scalar(STREAMK_EXTRA_ITERS, i32) # if there are remainder iterations i.e. a cta is responsible for more iterations than some
+        sk_iters_pcu = tkw.scalar(
+            STREAMK_ITERS_PCU, i32
+        )  # number of streamk iterations a compute unit is responsible
+        sk_extra_iters = tkw.scalar(
+            STREAMK_EXTRA_ITERS, i32
+        )  # if there are remainder iterations i.e. a cta is responsible for more iterations than some
 
         extra_iter = tkw.minimum(cta_id, sk_extra_iters)
 
@@ -567,8 +571,10 @@ def get_streamk_gemm_kernel(
             # cta_k_start ranges from 0-29
             # while remainder ranges within 0-9
             cta_k_start = tkw.self_index(WORK_UNIT_START, i32)
-            remainder = cta_k_start % iters_per_output_tile # remainder is the relative index within the output tile itself
-            cta_k_end = tkw.minimum( # also relative end within an output tile
+            remainder = (
+                cta_k_start % iters_per_output_tile
+            )  # remainder is the relative index within the output tile itself
+            cta_k_end = tkw.minimum(  # also relative end within an output tile
                 cta_k_start + (iters_per_output_tile - remainder), work_unit_end
             )
             output_tile_id = cta_k_start // iters_per_output_tile
@@ -635,7 +641,7 @@ def get_streamk_gemm_kernel(
                 curr_acc = tkw.read(
                     partial_buffer,
                     mapping=partial_buffer_read_mapping,
-                    elements_per_thread=16, # we do elements_per_thread=16 since from our IndexMapping since the iterator strides by 16 elements from vector_shape (num of elements per wave)
+                    elements_per_thread=16,  # we do elements_per_thread=16 since from our IndexMapping since the iterator strides by 16 elements from vector_shape (num of elements per wave)
                     # so then within each stride we want to load all 16 elements per thread
                 )
                 tkw.set_symbol(OUTPUT_TILE_ITER_END, output_tile_iter_end)
@@ -670,7 +676,9 @@ def get_streamk_gemm_kernel(
                     def spinlock_wait():
                         # memory acquire
                         lock_val = tkw.read(
-                            lock_buffer, mapping=lock_buffer_read_mapping, flags=tkw.MemoryAccessFlags.VOLATILE
+                            lock_buffer,
+                            mapping=lock_buffer_read_mapping,
+                            flags=tkw.MemoryAccessFlags.VOLATILE,
                         )
                         one_val = Register[LOCK_DIM, f32](1.0)
                         is_ready = lock_val == one_val
@@ -700,7 +708,7 @@ def get_streamk_gemm_kernel(
 
                 final_k_end, final_acc = aggregate_partials_loop
                 tkw.write(final_acc, c, mapping=c_write_mapping, elements_per_thread=16)
-            
+
             new_cta_k_start = cta_k_end
             tkw.set_symbol(WORK_UNIT_START, new_cta_k_start)
 

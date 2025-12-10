@@ -57,8 +57,8 @@ class MemoryAccessFlags(IntFlag):
     """
 
     NONE = 0
-    VOLATILE = auto() 
-    NONTEMPORAL = auto() 
+    VOLATILE = auto()
+    NONTEMPORAL = auto()
 
 
 def read_meets_hw_transpose_requirements(
