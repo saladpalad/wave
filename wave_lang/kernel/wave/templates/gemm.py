@@ -443,7 +443,7 @@ def get_persistent_reordering_kernel(
         cta = tkw.scalar(WORKGROUP_0, tkl.i32)
 
         # XCD Swizzling (LLC/MALL Cache)
-        # Compute remapped cta for chunked region
+        # compute remapped cta for chunked region
         xcd_id = cta % tkw.scalar(NUM_XCDS, tkl.i32)
         local_cta = cta // tkw.scalar(NUM_XCDS, tkl.i32)
         chunk_idx = local_cta // tkw.scalar(CHUNK_SIZE, tkl.i32)
@@ -454,7 +454,7 @@ def get_persistent_reordering_kernel(
             + pos_in_chunk
         )
 
-        # Select: use remapped_cta if in chunked region, else use original cta
+        # use remapped_cta if in chunked region, else use original cta
         chunked_threshold = (
             tkw.scalar(TOTAL_TILES, tkl.i32)
             // (tkw.scalar(NUM_XCDS, tkl.i32) * tkw.scalar(CHUNK_SIZE, tkl.i32))
@@ -476,7 +476,7 @@ def get_persistent_reordering_kernel(
                 tkw.scalar(M_TILES, tkl.i32) - first_cta_m,
                 tkw.scalar(GROUP_SIZE_M, tkl.i32),
             )
-            # Relative cta coords within a group
+            # relative cta coords within a group
             cta_m = (
                 first_cta_m
                 + (tile_id % tkw.scalar(NUM_CTAS_IN_GROUP, tkl.i32)) % group_size_m_val
