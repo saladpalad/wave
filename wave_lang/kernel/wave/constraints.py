@@ -804,7 +804,6 @@ class WaveConstraint(DistributionConstraint):
     wave_id_0 = floor(thread_id_0 / threads_per_wave)
     wave_id_1 = thread_id_1
     wave_id_2 = thread_id_2
-
     """
 
     dim: IndexExpr

@@ -553,7 +553,6 @@ def add_emitter_subs(
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_1
         arith_d.constant(IndexType.get(), 0),  # DEVICE_DIM_2
     ]
-
     all_symbols = (
         emitter.thread_ids + emitter.workgroup_ids + device_zeros + induction_vars
     )
