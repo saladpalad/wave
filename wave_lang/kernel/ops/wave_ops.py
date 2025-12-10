@@ -7,6 +7,7 @@ import operator
 import sys
 from abc import ABC
 from dataclasses import dataclass, field, fields
+from enum import IntFlag, auto
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -45,6 +46,19 @@ PlaceholderT = TypeVar("PlaceholderT", bound="Placeholder")
 # An example of this is tag, which is only used for tagging operators
 # for their use in the custom wave schedule.
 IGNORED_KEYWORDS = ["tag"]
+
+
+class MemoryAccessFlags(IntFlag):
+    """
+    Flags for memory access operations (read/write).
+    Maps to LLVM load/store attributes.
+
+    i.e. flags = MemoryAccessFlags.VOLATILE | MemoryAccessFlags.NONTEMPORAL
+    """
+
+    NONE = 0
+    VOLATILE = auto() 
+    NONTEMPORAL = auto() 
 
 
 def read_meets_hw_transpose_requirements(
@@ -150,7 +164,7 @@ def read(
     elements_per_thread: Optional[IndexExpr | int] = None,
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
-    volatile: bool = False,
+    flags: MemoryAccessFlags = MemoryAccessFlags.NONE,
 ) -> "Register": ...
 
 
@@ -190,7 +204,7 @@ def write(
     elements_per_thread: Optional[IndexExpr | int] = None,
     mapping: Optional[IndexMapping] = None,
     mapping_dynamic_vals: "Register" | tuple["Register", ...] = (),
-    volatile: bool = False,
+    flags: MemoryAccessFlags = MemoryAccessFlags.NONE,
 ): ...
 
 
@@ -1920,10 +1934,14 @@ class Read(CustomOp):
     mapping: Optional[IndexMapping] = None
     mapping_dynamic_vals: tuple[fx.Node, ...] = ()
     bounds: Optional[dict[IndexSymbol, IndexExpr]] = None
-    volatile: bool = False
+    flags: MemoryAccessFlags = MemoryAccessFlags.NONE
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
     _write_dependency: Optional[list[fx.Node]] = None
+
+    @property
+    def volatile(self) -> bool:
+        return bool(self.flags & MemoryAccessFlags.VOLATILE)
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:
@@ -2291,9 +2309,14 @@ class Write(CustomOp):
     mapping: Optional[IndexMapping] = None
     mapping_dynamic_vals: tuple[fx.Node, ...] = ()
     bounds: Optional[dict[IndexSymbol, IndexExpr]] = None
-    volatile: bool = False
+    flags: MemoryAccessFlags = MemoryAccessFlags.NONE
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
+
+    @property
+    def volatile(self) -> bool:
+        """Backwards compatibility property."""
+        return bool(self.flags & MemoryAccessFlags.VOLATILE)
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:

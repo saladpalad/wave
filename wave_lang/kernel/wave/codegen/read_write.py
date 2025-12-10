@@ -58,6 +58,7 @@ from ...ops.wave_ops import (
     write,
     scatter_add,
     read_meets_hw_transpose_requirements,
+    MemoryAccessFlags,
 )
 from ..utils.general_utils import get_fastest_index, linearize_index
 from ..utils.mapping_utils import transform_index_on_mapping
@@ -622,7 +623,7 @@ def _build_mask_with_mapping(
 def handle_read(emitter: WaveEmitter, node: fx.Node):
     # This is similar to tkl.store with fixed start indices for now.
     try:
-        memory, elements_per_thread, mapping, dyn_vals, bounds, volatile, *rest = (
+        memory, elements_per_thread, mapping, dyn_vals, bounds, flags, *rest = (
             node.args
         )
     except ValueError as e:
@@ -668,7 +669,9 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    if volatile:
+    # Check if any flags are set that require LLVM load
+    use_llvm_load = flags != MemoryAccessFlags.NONE
+    if use_llvm_load:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_src)
         strides, _ = kb_ir_type.get_strides_and_offset()
         offset = arith_d.constant(IndexType.get(), 0)
@@ -685,7 +688,12 @@ def handle_read(emitter: WaveEmitter, node: fx.Node):
 
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        result = llvm_d.LoadOp(vector_type, llvm_ptr, volatile_=True).result
+        result = llvm_d.LoadOp(
+            vector_type,
+            llvm_ptr,
+            volatile_=bool(flags & MemoryAccessFlags.VOLATILE),
+            nontemporal=bool(flags & MemoryAccessFlags.NONTEMPORAL),
+        ).result
     elif read_meets_hw_transpose_requirements(
         get_custom(node), emitter.constraints, emitter.options.target
     ):
@@ -719,7 +727,7 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
             mapping,
             dyn_vals,
             bounds,
-            volatile,
+            flags,
             *rest,
         ) = node.args
     except ValueError as e:
@@ -772,7 +780,9 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
         emitter, index, dynamic_vals_map_start
     )
 
-    if volatile:
+    # Check if any flags are set that require LLVM store
+    use_llvm_store = flags != MemoryAccessFlags.NONE
+    if use_llvm_store:
         ptr = memref_d.extract_aligned_pointer_as_index(kb_dest)
         strides, _ = kb_ir_type.get_strides_and_offset()
         offset = arith_d.constant(IndexType.get(), 0)
@@ -791,7 +801,12 @@ def handle_write(emitter: WaveEmitter, node: fx.Node):
 
         llvm_ptr_type = llvm_d.PointerType.get()
         llvm_ptr = llvm_d.IntToPtrOp(llvm_ptr_type, final_ptr_i64).result
-        llvm_d.StoreOp(insert_vector, llvm_ptr, volatile_=True)
+        llvm_d.StoreOp(
+            insert_vector,
+            llvm_ptr,
+            volatile_=bool(flags & MemoryAccessFlags.VOLATILE),
+            nontemporal=bool(flags & MemoryAccessFlags.NONTEMPORAL),
+        )
     else:
         _create_vec_read_write(
             emitter,

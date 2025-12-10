@@ -242,7 +242,7 @@ def add_optimized_nodes(
                     memory,
                     load_elems_per_thread,
                     custom.mapping,
-                    volatile=custom.volatile,
+                    flags=custom.flags,
                 ).add_to_graph(custom.graph, loc=custom.location, tag=custom.tag)
                 read.pre_expansion_id = custom.pre_expansion_id
                 read.vector_shapes = custom.vector_shapes
