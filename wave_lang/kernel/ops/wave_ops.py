@@ -1940,10 +1940,6 @@ class Read(CustomOp):
     _write_dependency: Optional[list[fx.Node]] = None
 
     @property
-    def volatile(self) -> bool:
-        return bool(self.flags & MemoryAccessFlags.VOLATILE)
-
-    @property
     def indexing_dims(self) -> list[IndexSymbol]:
         from ..wave.utils.general_utils import infer_dim
 
@@ -2312,11 +2308,6 @@ class Write(CustomOp):
     flags: MemoryAccessFlags = MemoryAccessFlags.NONE
     source: Optional[tuple[IndexExpr]] = None
     target: Optional[tuple[IndexExpr]] = None
-
-    @property
-    def volatile(self) -> bool:
-        """Backwards compatibility property."""
-        return bool(self.flags & MemoryAccessFlags.VOLATILE)
 
     @property
     def indexing_dims(self) -> list[IndexSymbol]:

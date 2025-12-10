@@ -788,6 +788,7 @@ class WaveConstraint(DistributionConstraint):
     If the K dimension has been distributed among workgroups with a
     tile size of BLOCK_K, then the number of waves along the K dimension
     is given by BLOCK_K // WAVE_K.
+
     This constraint adds an index constraint to the K-th dimension of a
     a tensor of the form WAVE_K * wave_id. The index of the wave
     is determined by the following mapping:
@@ -796,6 +797,7 @@ class WaveConstraint(DistributionConstraint):
     workgroup id 2 -> wave/thread id z
     (If the tensor dimension has been distributed along workgroup dimension
     {0, 1, 2}, then the corresponding thread id is {x, y, z}).
+
     Because we represent the number of threads per block as
     [wave_id_0 * threads_per_wave, wave_id_1, wave_id_2], special care is
     required when computing wave_id_0. Specifically,
