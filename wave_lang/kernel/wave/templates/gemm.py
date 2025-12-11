@@ -385,7 +385,6 @@ def get_streamk_gemm_kernel(
     # if you split a tile some ctas will get extra iterations if the total amount of iterations is not evenly distributed
     iters_per_tile = (k + block_k - 1) // block_k
     streamk_tiles = total_tiles
-    total_data_parallel_tiles = total_tiles - streamk_tiles
     total_streamk_iters = streamk_tiles * iters_per_tile
     streamk_iters_pcu = total_streamk_iters // num_ctas
     streamk_extra_iters = total_streamk_iters % num_ctas
@@ -744,7 +743,6 @@ def get_streamk_gemm_kernel(
         # as a good ratio will use data parallel as long as possible, and activate streamk when a given time step/wave of tiles needs
         # to be split for better utilization (hipblas/triton blas use origami as their heuristic)
         STREAMK_TILES: streamk_tiles,
-        DATA_PARALLEL_TILES: total_data_parallel_tiles,
     }
 
     return streamk_gemm, hyperparams
