@@ -383,6 +383,7 @@ def get_streamk_gemm_kernel(
     # if its split it will be a streamk tile
     # if its not it will be a data parallel tile
     # if you split a tile some ctas will get extra iterations if the total amount of iterations is not evenly distributed
+    data_parallel_tiles = total_tiles - streamk_tiles
     iters_per_tile = (k + block_k - 1) // block_k
     streamk_tiles = total_tiles
     total_streamk_iters = streamk_tiles * iters_per_tile
@@ -538,7 +539,7 @@ def get_streamk_gemm_kernel(
         cta_id = tkw.scalar(WORKGROUP_0, i32)
         tkw.set_symbol(CTA_ID, cta_id)
         iters_per_output_tile = tkw.scalar(ITERS_PER_OUTPUT_TILE, i32)
-        total_full_tiles = tkw.scalar(DATA_PARALLEL_TILES, i32)
+        data_parallel_tiles = tkw.scalar(DATA_PARALLEL_TILES, i32)
         sk_iters_pcu = tkw.scalar(
             STREAMK_ITERS_PCU, i32
         )  # number of streamk iterations a compute unit is responsible
@@ -552,13 +553,13 @@ def get_streamk_gemm_kernel(
         # where in a single wave a cta computes a single work unit
         # a single work unit can span multiple output tiles
         work_unit_start = (
-            total_full_tiles * iters_per_output_tile
+            data_parallel_tiles * iters_per_output_tile
             + (cta_id * sk_iters_pcu)
             + extra_iter
         )
         next_extra_iter = tkw.minimum(cta_id + tkw.scalar(1, i32), sk_extra_iters)
         work_unit_end = (
-            total_full_tiles * iters_per_output_tile
+            data_parallel_tiles * iters_per_output_tile
             + ((cta_id + tkw.scalar(1, i32)) * sk_iters_pcu)
             + next_extra_iter
         )
@@ -743,6 +744,7 @@ def get_streamk_gemm_kernel(
         # as a good ratio will use data parallel as long as possible, and activate streamk when a given time step/wave of tiles needs
         # to be split for better utilization (hipblas/triton blas use origami as their heuristic)
         STREAMK_TILES: streamk_tiles,
+        DATA_PARALLEL_TILES: data_parallel_tiles,
     }
 
     return streamk_gemm, hyperparams
@@ -944,9 +946,6 @@ def get_hybrid_streamk_gemm_kernel(
         c: Memory[M, N, ADDRESS_SPACE_C, f32],
     ):
         ### DATA PARALLEL PART
-        dp_tiles_scalar = tkw.scalar(DATA_PARALLEL_TILES, tkl.i32)
-        tkw.set_symbol(DATA_PARALLEL_TILES, dp_tiles_scalar)
-
         condition = DP_TILE_ID_AXIS < DATA_PARALLEL_TILES
         init_tile_id = tkw.scalar(WORKGROUP_0, tkl.i32)
 
@@ -982,19 +981,19 @@ def get_hybrid_streamk_gemm_kernel(
         cta_id = tkw.scalar(WORKGROUP_0, i32)
         tkw.set_symbol(CTA_ID, cta_id)
         iters_per_output_tile = tkw.scalar(ITERS_PER_OUTPUT_TILE, i32)
-        total_full_tiles = tkw.scalar(DATA_PARALLEL_TILES, i32)
+        data_parallel_tiles = tkw.scalar(DATA_PARALLEL_TILES, i32)
         sk_iters_pcu = tkw.scalar(STREAMK_ITERS_PCU, i32)
         sk_extra_iters = tkw.scalar(STREAMK_EXTRA_ITERS, i32)
 
         extra_iter = tkw.minimum(cta_id, sk_extra_iters)
         work_unit_start = (
-            total_full_tiles * iters_per_output_tile
+            data_parallel_tiles * iters_per_output_tile
             + (cta_id * sk_iters_pcu)
             + extra_iter
         )
         next_extra_iter = tkw.minimum(cta_id + tkw.scalar(1, i32), sk_extra_iters)
         work_unit_end = (
-            total_full_tiles * iters_per_output_tile
+            data_parallel_tiles * iters_per_output_tile
             + ((cta_id + tkw.scalar(1, i32)) * sk_iters_pcu)
             + next_extra_iter
         )
