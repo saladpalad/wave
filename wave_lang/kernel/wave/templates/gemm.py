@@ -383,12 +383,12 @@ def get_streamk_gemm_kernel(
     # if its split it will be a streamk tile
     # if its not it will be a data parallel tile
     # if you split a tile some ctas will get extra iterations if the total amount of iterations is not evenly distributed
-    data_parallel_tiles = total_tiles - streamk_tiles
     iters_per_tile = (k + block_k - 1) // block_k
     streamk_tiles = total_tiles
     total_streamk_iters = streamk_tiles * iters_per_tile
     streamk_iters_pcu = total_streamk_iters // num_ctas
     streamk_extra_iters = total_streamk_iters % num_ctas
+    data_parallel_tiles = total_tiles - streamk_tiles
 
     # Symbols
     M = sym.M
