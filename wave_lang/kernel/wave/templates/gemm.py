@@ -469,7 +469,7 @@ def get_persistent_reordering_kernel(
             tile_id = tkw.self_index(TILE_IDX, tkl.i32)
 
             # CTA Swizzling (L2 Cache)
-            # 1 CTA mapped to 1 Output Tile
+            # 1 CTA mapped to 1 output tile
             group_id = tile_id // tkw.scalar(NUM_CTAS_IN_GROUP, tkl.i32)
             first_cta_m = group_id * tkw.scalar(GROUP_SIZE_M, tkl.i32)
             group_size_m_val = tkw.minimum(
