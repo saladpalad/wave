@@ -234,6 +234,7 @@ class HardwareConstraint(Constraint):
     mma_type: Optional[MMAType | ScaledMMAType] = MMAType.F32_16x16x16_F16
     vector_shapes: Optional[dict[IndexSymbol, int]] = None
     max_bits_per_load: int = 128
+    n_service_waves: int = 0
 
     def max_elems_per_load(self, element_type: DataType) -> int:
         return self.max_bits_per_load // element_type.bitwidth()
@@ -448,11 +449,12 @@ class HardwareConstraint(Constraint):
         return offset
 
     @property
-    def threads_per_block(self) -> tuple[int]:
+    def threads_per_block(self) -> tuple[int, int, int]:
         # threads_per_block is set in initialize_wave_constraints method
         return (
-            self.waves_per_block[0] * self.threads_per_wave,
-        ) + self.waves_per_block[1:]
+            (self.waves_per_block[0]) * self.threads_per_wave,
+            self.waves_per_block[1] + self.n_service_waves,
+        ) + self.waves_per_block[2:]
 
     @property
     def linearized_thread_id(self) -> IndexExpr:

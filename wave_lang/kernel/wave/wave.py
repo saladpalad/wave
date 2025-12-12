@@ -107,6 +107,7 @@ from .scheduling.schedule import schedule_graph
 from .shared_memory_indexing import apply_shared_memory_indexing_corrections
 from .generate_bound_checks import generate_bound_checks
 from .symbolic_constraints import SymbolicAlias
+from .specialize import specialize_kernel
 from .type_inference import infer_types
 from .utils.compile_utils import canonicalize_module, apply_transform
 from .utils.general_utils import (
@@ -881,10 +882,12 @@ class LaunchableWave(Launchable):
                 partial(hoist_loop_invariant_ops, trace, self.constraints),
                 partial(tensor_load_to_shared, trace, self.constraints, options),
                 partial(multicast, trace, self.constraints, options),
-                partial(fuse_tensor_loads, trace, self.constraints),
+                partial(fuse_tensor_loads, trace, self.constraints, options),
                 partial(in_thread_transpose, trace, self.constraints, options),
                 partial(global_to_shared_gathers, trace, self.constraints),
                 partial(minimize_global_loads, trace, self.constraints),
+                # Wave specialization
+                partial(specialize_kernel, trace, self.constraints, options),
                 partial(gather_to_shared, trace, self.constraints, options),
                 partial(gather_to_shared_swizzling, trace, self.constraints, options),
                 partial(
@@ -951,7 +954,12 @@ class LaunchableWave(Launchable):
                 ),
             ]
         graph_passes += [
-            partial(add_shared_memory_barriers, trace, target=options.target),
+            partial(
+                add_shared_memory_barriers,
+                trace,
+                target=options.target,
+                is_specialized=options.specialize,
+            ),
             partial(add_cluster_barriers, trace, self.constraints, options),
             partial(compute_shared_memory_usage, trace, options.kernel_launch_info),
             partial(partition_gather_like_ops, trace, self.constraints, options.target),
