@@ -757,7 +757,7 @@ def _fixup_region_node_common(
     output = get_custom(get_last(subgraph.nodes))
     if all(x is None for x in output.return_vals):
         return
-
+    nodes_to_erase = []
     return_vals = output.return_vals[0]
     if isinstance(return_vals, Sequence):
         return_vals = [get_custom(x) for x in return_vals]
@@ -783,7 +783,11 @@ def _fixup_region_node_common(
         get_result.index = get_item.index
         get_result = get_custom(get_result)
         get_item.replace_all_uses_with(get_result)
-        get_item.erase()
+        nodes_to_erase.append(get_item)
+    
+    for node in nodes_to_erase:
+        if not node.fx_node.users:
+            node.erase()
 
     remove_original_nodes(return_vals)
 
@@ -806,7 +810,6 @@ def fixup_iterate_nodes(
     """
     iterate_context = expansion_context.iterate_context
     iterate_nodes = trace.walk(lambda x: isinstance(get_custom(x), Iterate))
-    nodes_to_erase = []
 
     for iterate in reversed(iterate_nodes):
         iterate = get_custom(iterate)

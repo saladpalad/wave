@@ -327,10 +327,18 @@ def get_inputs(
             )
     elif isinstance(custom, Iterate):
         iteration_subgraph = custom.get_root_graph().subgraphs[custom.subgraph_name]
-        inputs.append(custom.outputs(iteration_subgraph))
+        outputs = custom.outputs(iteration_subgraph)
+        if isinstance(outputs, (list, tuple)):
+            inputs.extend(outputs)
+        else:
+            inputs.append(outputs)
     elif isinstance(custom, Conditional):
         conditional_subgraph = custom.get_root_graph().subgraphs[custom.subgraph_name]
-        inputs.append(custom.outputs(conditional_subgraph))
+        outputs = custom.outputs(conditional_subgraph)
+        if isinstance(outputs, (list, tuple)):
+            inputs.extend(outputs)
+        else:
+            inputs.append(outputs)
     else:
         # Default handling for other ops.
         for input in node.all_input_nodes:

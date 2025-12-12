@@ -640,6 +640,7 @@ def add_nodes_to_sources(
     sources: list[
         tuple[CustomOp, dict[IndexSymbol, IndexSequence], dict[IndexSymbol, int]]
     ],
+    trace: Optional[CapturedTrace] = None,
 ) -> list[CustomOp]:
     """
     Populate the sources with the inputs and users of the source node.
@@ -656,7 +657,41 @@ def add_nodes_to_sources(
                 custom.vector_shapes if custom.vector_shapes else source_vector_shapes
             )
             sources.append((custom, source_index, vector_shapes))
+
+    # Propgate a write node to its respective read node(s) that depened on it
+    # basically makes it so the read node's indices are the same as the write node's
+    # i.e. partial_buffer_write and partial_buffer_read
+    if isinstance(source, Write):
+        dependent_reads = get_reads_dependent_on_write(trace, source.fx_node)
+        for read_node in dependent_reads:
+            read_custom = get_custom(read_node)
+            vector_shapes = (
+                read_custom.vector_shapes if read_custom.vector_shapes else source_vector_shapes
+            )
+            sources.append((read_custom, source_index, vector_shapes))
+
     return sources
+
+
+def get_reads_dependent_on_write(
+    trace: CapturedTrace, write_node: fx.Node
+) -> list[fx.Node]:
+    """
+    Find all Read nodes that read from the same memory as a write_node.
+    """
+    write_memory = get_custom(write_node).memory
+    write_memory_name = write_memory.name
+    dependent_reads = []
+
+    def collect_matching_reads(node: fx.Node) -> bool:
+        custom = get_custom(node)
+        if isinstance(custom, Read) and custom.memory:
+            if custom.memory.name == write_memory_name:
+                dependent_reads.append(node)
+        return False
+    
+    trace.walk(filter=collect_matching_reads)
+    return dependent_reads
 
 
 def should_update_index(
@@ -720,6 +755,7 @@ def propagate_indices(
     sources: set[CustomOp],
     visited: set[CustomOp],
     symbolic_constraints: list[SymbolicAlias],
+    trace: Optional[CapturedTrace] = None,
 ):
     """
     Propagate the index and vector shapes through the graph
@@ -749,6 +785,7 @@ def propagate_indices(
                 source_index,
                 source_vector_shapes,
                 sources,
+                trace,
             )
     return visited
 
@@ -791,6 +828,7 @@ def set_thread_dependent_index_from_mma(
             new_sources,
             visited,
             symbolic_constraints,
+            trace,
         )
 
 
@@ -819,6 +857,7 @@ def set_thread_dependent_index_from_read_write(
             new_sources,
             visited,
             symbolic_constraints,
+            trace,
         )
 
 
@@ -951,6 +990,7 @@ def set_thread_dependent_index_from_reduce(
             new_sources,
             visited,
             symbolic_constraints,
+            trace,
         )
 
 
